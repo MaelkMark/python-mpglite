@@ -1,0 +1,312 @@
+import json
+from uuid import uuid4
+
+from collections.abc import Callable
+
+
+class Message:
+    _message_types = {}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "TYPE" in cls.__dict__:
+            Message._message_types[cls.TYPE] = cls
+
+    def __init__(
+        self, message_type: str, description: str = "<no description>", **properties
+    ):
+        self.type = message_type
+        self.description = description
+        self.dict = {"type": message_type, **properties}
+        self.json = json.dumps(self.dict)
+
+        for key, value in properties.items():
+            setattr(self, key, value)
+
+    def __str__(self):
+        return self.json
+
+    def __repr__(self):
+        if self.description == "<no description>":
+            return f"{self.__class__.__name__}({self.type}; json: {self.json})"
+        else:
+            return f"{self.__class__.__name__}({self.type}: {self.description}; json: {self.json})"
+
+    @property
+    def ok(self):
+        return not isinstance(self, ErrorMessage)
+    
+    @staticmethod
+    def parse(message: str | dict):
+        if isinstance(message, Message):
+            return message
+
+        if isinstance(message, dict):
+            dictionary = message
+        else:
+            dictionary = json.loads(message)
+            
+        message_type = dictionary["type"]
+        properties = {key: value for key, value in dictionary.items() if key != "type"}
+
+        if message_type in Message._message_types:
+            return Message._message_types[message_type](**properties)
+
+        return Message(message_type, **properties)
+
+
+class OKMessage(Message):
+    TYPE = "ok"
+    def __init__(self, **properties):
+        super().__init__(self.TYPE, "Indicates that the request was successful", **properties)
+
+
+class ServerMessage(Message):
+    TYPE = "server_message"
+    def __init__(self, message: any, **properties):
+        super().__init__(self.TYPE, "A question message from the server", message=message, **properties)
+
+
+class ClientMessage(Message):
+    TYPE = "client_message"
+    def __init__(self, message: any, **properties):
+        super().__init__(self.TYPE, "An answer to a ServerMessage from the server", message=message, **properties)
+
+
+class InitMessage(Message):
+    TYPE = "init"
+    def __init__(self, user_id: int, online_users: int, **properties):
+        super().__init__(
+            self.TYPE,
+            "initial connection message from server containing user ID",
+            user_id=user_id,
+            online_users=online_users,
+            **properties,
+        )
+
+
+class RoomMessage(Message):
+    TYPE = "room_message"
+    def __init__(
+        self,
+        message: str,
+        excluded_users: list[int] = [],
+        room_name: str | None = None,
+        **properties,
+    ):
+        super().__init__(
+            self.TYPE,
+            "send a message to the current room",
+            message=message,
+            excluded_users=excluded_users,
+            room_name=room_name,
+            **properties,
+        )
+
+
+class PrivateMessage(Message):
+    TYPE = "private_message"
+    def __init__(self, target_id: int, message: str | dict, **properties):
+        super().__init__(
+            self.TYPE,
+            "send a message to a specific user",
+            target_id=target_id,
+            message=json.dumps(message),
+            **properties,
+        )
+
+
+class JoinRoomMessage(Message):
+    TYPE = "join_room"
+    def __init__(self, room: str, **properties):
+        super().__init__(
+            self.TYPE, "join a room with the given name", room=room, **properties
+        )
+
+
+class RoomJoinedMessage(Message):
+    TYPE = "room_joined"
+    def __init__(self, room: str, **properties):
+        super().__init__(
+            self.TYPE,
+            "sent to a client when they join a room",
+            room=str(room),
+            **properties,
+        )
+
+
+class RoomLeftMessage(Message):
+    TYPE = "room_left"
+    def __init__(self, user_id, **properties):
+        super().__init__(
+            self.TYPE, "user {user_id} left the room", user_id=user_id, **properties
+        )
+
+
+class RoomStartedMessage(Message):
+    TYPE = "room_started"
+    def __init__(self, room, **properties):
+        super().__init__(self.TYPE, "room started", room=str(room), **properties)
+
+
+class CreateRoomMessage(Message):
+    TYPE = "create_room"
+    def __init__(
+        self,
+        room: str,
+        max_players: int,
+        min_players: int = 2,
+        auto_start: bool = True,
+        **properties,
+    ):
+        super().__init__(
+            self.TYPE,
+            "create a room with the given name and properties",
+            room=room,
+            max_players=max_players,
+            min_players=min_players,
+            auto_start=auto_start,
+            **properties,
+        )
+
+
+class RoomListMessage(Message):
+    TYPE = "room_list"
+    def __init__(self, rooms: list[str], **properties):
+        super().__init__(
+            self.TYPE,
+            "list of all rooms",
+            rooms=rooms,
+            **properties,
+        )
+
+
+class UserListMessage(Message):
+    TYPE = "user_list"
+    def __init__(self, users: list[str], **properties):
+        super().__init__(
+            self.TYPE,
+            "list of all users",
+            users=users,
+            **properties,
+        )
+
+
+class ErrorMessage(Message):
+    TYPE = "error"
+    def __init__(self, error_code, error_message, severity="error", **properties):
+        super().__init__(
+            self.TYPE,
+            error_message,
+            **{
+                "error_code": error_code,
+                "error_message": error_message,
+                "severity": severity,
+                **properties,
+            },
+        )
+        self.error_code = error_code
+        self.error_message = error_message
+        self.severity = severity
+
+    def __repr__(self):
+        return f"ErrorMessage({self.error_code}: {self.error_message}, {self.json}"
+
+
+class MessageBundle(Message):
+    TYPE = "message_bundle"
+    def __init__(self, messages: list[Message], **properties):
+        super().__init__(
+            self.TYPE,
+            "bundle of multiple messages",
+            messages=[str(message) for message in messages],
+            **properties,
+        )
+
+    @property
+    def parsed_messages(self):
+        return [Message.parse(message) for message in self.messages]
+
+
+class Question(Message):
+    TYPE = "question"
+    # TODO: Better question_id
+    pending: list = []
+
+    def __init__(
+        self,
+        message: Message,
+        callback: Callable = None,
+        question_id: str = None,
+        process: bool = False,
+        **properties,
+    ):
+        # Serialize message content if it's an object
+        q_id = question_id if question_id else str(uuid4())
+
+        super().__init__(
+            self.TYPE,
+            "send a message and wait for a response",
+            message=str(message),
+            question_id=q_id,
+            process=process,
+            **properties,
+        )
+
+        self.message = str(message)
+        self.question_id = q_id
+        self.callback = callback
+        self.process = process
+
+        if self.callback:
+            Question.pending.append(self)
+
+    @property
+    def parsed_message(self):
+        return Message.parse(self.message)
+
+    def answer(self, message: Message | None = None):
+        if self not in Question.pending:
+            return
+
+        # print(f"Message {self.question_id} got answered: {repr(message)}")
+        Question.pending.remove(self)
+        if self.callback:
+            self.callback(message)
+
+    @classmethod
+    def answer_question(cls, question_id: str, message: Message | None = None):
+        for question in cls.pending:
+            if question.question_id == question_id:
+                question.answer(message)
+                return True
+
+        return False
+
+
+class Answer(Message):
+    TYPE = "answer"
+    def __init__(self, question_id: str, message: Message | str | dict, process: bool = False, **properties):
+        if not isinstance(message, Message):
+            message = Message.parse(message)
+
+        super().__init__(
+            self.TYPE,
+            f"answer to question #{question_id}",
+            question_id=question_id,
+            process=process,
+            message=str(message),
+            **properties,
+        )
+
+        if not self.process:
+            Question.answer_question(self.question_id, message)
+
+    @property
+    def parsed_message(self):
+        return Message.parse(self.message)
+
+
+class OKAnswer(Answer):
+    def __init__(self, question_id, process = False, **properties):
+        super().__init__(question_id, OKMessage(), process, **properties)

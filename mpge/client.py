@@ -1,0 +1,405 @@
+from .utils import *
+from .message import *
+from .exceptions import *
+
+import math
+import json
+import threading
+import concurrent.futures
+import traceback
+from websockets.sync.client import connect as ws_connect
+from websockets.exceptions import ConnectionClosed, InvalidURI
+
+from typing import Any
+from collections.abc import Callable
+from websockets.sync.client import ClientConnection
+
+
+class Client:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        logging: bool = False,
+        on_message: Callable = None,
+        on_room_joined: Callable = None,
+        on_room_start: Callable = None,
+        on_room_list: Callable = None,
+        on_user_list: Callable = None,
+        on_question: Callable = None,
+    ):
+        self.uri: str = f"ws://{host}:{port}"
+        self.ws: ClientConnection = None
+        self._running: bool = False
+        self.user_id: int | None = None
+        self.username: str | None = None
+        self.logging: bool = logging
+        self.room: Room | None = None
+        self._users: list[User] = []
+        self._users_last: list[Room] = self._users.copy()
+        self._rooms: list[Room] = []
+        self._rooms_last: list[str] = []
+
+        # Event handlers
+        self.on_message: Callable = on_message
+        smart_kwargs(self.on_message, message=None, client=None)
+
+        self.on_question: Callable = (
+            on_question  # When the server sends a ServerMessage question
+        )
+        smart_kwargs(self.on_question, question=None, client=None)
+
+        self.on_room_joined: Callable = on_room_joined
+        smart_kwargs(self.on_room_joined, room=None, client=None)
+
+        self.on_room_start: Callable = on_room_start
+        smart_kwargs(self.on_room_start, room=None, client=None)
+
+        self.on_room_list: Callable = on_room_list
+        smart_kwargs(self.on_room_list, rooms=None, client=None)
+
+        self.on_user_list: Callable = on_user_list
+        smart_kwargs(self.on_user_list, users=None, client=None)
+
+    @property
+    def users(self):
+        self._users_last = self._users.copy()
+        return [user for user in self._users if not user.temp]
+
+    @property
+    def users_changed(self):
+        return self._users != self._users_last
+
+    @property
+    def _rooms_filtered(self):
+        return [room for room in self._rooms if not room.lobby]
+
+    @property
+    def rooms(self):
+        self._rooms_last = [repr(room) for room in self._rooms]
+        return self._rooms_filtered
+
+    @property
+    def rooms_changed(self):
+        return [repr(room) for room in self._rooms] != self._rooms_last
+
+    @property
+    def lobby(self):
+        return next((room for room in self._rooms if room.lobby), None)
+
+    def _listen(self):
+        while self._running:
+            try:
+                message_json = self.ws.recv()
+                message = Message.parse(message_json)
+
+                payload = message
+                question_id = None
+
+                if message.type == "question":
+                    payload = message.parsed_message
+                    question_id = message.question_id
+                    self._handle_question(message)
+                    continue
+
+                if message.type == "answer":
+                    if not message.process:
+                        continue
+                    payload = message.parsed_message
+                    question_id = message.question_id
+
+                messages = (
+                    payload.parsed_messages
+                    if payload.type == "message_bundle"
+                    else [payload]
+                )
+
+                for msg in messages:
+                    if self.logging:
+                        print(f"Message received: {repr(msg)}")
+
+                    self._handle_message(msg)
+
+                if question_id:
+                    Question.answer_question(question_id, payload)
+            except ConnectionClosed:
+                raise ConnectionLostError("The connection was dropped by the server.")
+            except Exception as e:
+                print(f"Listener error: {e}")
+                print(traceback.format_exc())
+                self._running = False
+                break
+
+    def _handle_message(self, message: Message):
+        match message.type:
+            case "init":
+                self.user_id = message.user_id
+            case "username":
+                self.username = message.username
+            case "room_list":
+                current_room_names = []
+                for room_data in message.rooms:
+                    if isinstance(room_data, str):
+                        room_data = json.loads(room_data)
+
+                    room = self.get_room_by_name(room_data["name"])
+                    if not room:
+                        room = Room.parse(self, room_data)
+                        self._rooms.append(room)
+
+                    room.update(room_data)
+                    current_room_names.append(room.name)
+
+                self._rooms = [r for r in self._rooms if r.name in current_room_names]
+
+                smart_call(self.on_room_list, rooms=self._rooms_filtered)
+            case "user_list":
+                current_ids = []
+                for user_data in message.users:
+                    if isinstance(user_data, str):
+                        user_data = json.loads(user_data)
+
+                    user = self.get_user_by_id(user_data["user_id"])
+                    user.username = user_data["username"]
+                    user.temp = False
+                    current_ids.append(user.user_id)
+
+                # Remove users that are no longer connected
+                self._users = [u for u in self._users if u.user_id in current_ids]
+
+                smart_call(self.on_user_list, users=self.users, client=self)
+
+            case "room_joined":
+                room = self.get_room_by_name(message.room)
+                self.room = room
+                smart_call(self.on_room_joined, room=room, client=self)
+
+            case "room_start":
+                smart_call(self.on_room_start, room=message.room, client=self)
+
+            case "server_message":
+                smart_call(self.on_message, message=message.message, client=self)
+
+    def _handle_question(self, question: Message):
+        message = question.parsed_message
+        answer_message = None
+        match message.type:
+            case "server_message":
+                answer = None
+                answer = smart_call(
+                    self.on_question, question=message.message, client=self
+                )
+
+                answer_message = ClientMessage(answer)
+
+        if answer_message is not None:
+            self._send(
+                Answer(question.question_id, answer_message, process=question.process)
+            )
+
+    def _send(self, message: Message):
+        self.ws.send(str(message))
+
+    def send(self, message: Any):
+        self._send(ClientMessage(message))
+
+    def _ask(self, message: Message, process: bool = False) -> Message:
+        """Sends a Question and waits for an Answer. Returns the answer Message object."""
+        future = concurrent.futures.Future()
+
+        def callback(response):
+            future.set_result(response)
+
+        self._send(Question(message, callback, process=process))
+        return future.result()
+
+    def ask(self, message: Any) -> Message:
+        return self._ask(ClientMessage(message)).message
+
+    def get_user_by_id(self, user_id: int):
+        for user in self._users:
+            if user.user_id == user_id:
+                return user
+
+        new_user = User(self, user_id, "Loading...", temp=True)
+        self._users.append(new_user)
+        return new_user
+
+    def get_user_by_username(self, username: str):
+        for user in self._users:
+            if user.username == username:
+                return user
+        return None
+
+    def get_room_by_name(self, name: str):
+        for room in self._rooms:
+            if room.name == name:
+                return room
+        return None
+
+    def send_room_message(self, message: str):
+        """Sends a message to all players in the current room."""
+        self._send(RoomMessage(message))
+
+    def send_private_message(self, target_id: int, message: str | dict):
+        """Sends a private message to a specific player."""
+        self._send(PrivateMessage(target_id, message))
+
+    def create_room(
+        self, room_name: str, max_players: int = math.inf, min_players: int = 2
+    ):
+        """Creates a new room and joins to it."""
+        return self._ask(
+            CreateRoomMessage(
+                room=room_name, min_players=min_players, max_players=max_players
+            )
+        )
+
+    def join_room(self, room_name: str) -> Message:
+        """Joins room"""
+        return self._ask(JoinRoomMessage(room_name))
+
+    def get_room_list(self):
+        """Returns a list of all rooms."""
+        response = self._ask(Message("get_room_list"))
+        # print(repr(response))
+        return response.rooms
+
+    def set_username(self, username: str) -> Message:
+        return self._ask(Message("set_username", username=username), process=True)
+
+    def connect(self):
+        """Connects to the server and starts the listener thread"""
+
+        try:
+            self.ws = ws_connect(self.uri)
+        except (ConnectionRefusedError, OSError):
+            raise ServerNotFoundError(
+                f"Failed to connect: Could not reach server at {self.uri}. Is the server running?"
+            )
+        except InvalidURI:
+            raise InvalidURIError(
+                f"Failed to connect: The URI {self.uri} is incorrectly formatted."
+            )
+        except ConnectionClosed:
+            raise ConnectionLostError(
+                "Failed to connect: The connection was dropped by the server."
+            )
+
+        # try:
+        #     self.ws = ws_connect(self.uri)
+        # except Exception as e:
+        #     print(e)
+        #     return False
+
+        self._running = True
+
+        # Start listening in a background thread
+        thread = threading.Thread(target=self._listen, daemon=True)
+        thread.start()
+
+        response = self._ask(Message("init_request"), process=True)
+
+
+class User:
+    def __init__(self, client: Client, user_id: int, username: str, temp: bool = False):
+        self.__client = client
+        self.user_id = user_id
+        self.username = username
+        self.temp = temp
+        self.alive = True
+
+    def __str__(self):
+        return (
+            f"User#{self.user_id}({self.username}{" (dead)" if not self.alive else ""})"
+        )
+
+    def send(self, message: str | dict):
+        self.__client.send_private_message(self.user_id, message)
+
+    @staticmethod
+    def parse(client: Client, user_dict: str | dict):
+        if isinstance(user_dict, str):
+            user_dict = json.loads(user_dict)
+
+        return User(client, user_dict["user_id"], user_dict["username"])
+
+
+class Room:
+    def __init__(
+        self,
+        client: Client,
+        name: str,
+        players: list[User] = [],
+        max_players: int = math.inf,
+        min_players: int = 2,
+        auto_start: bool = True,
+        lobby: bool = False,
+    ):
+        self.__client = client
+        self.name = name
+        self.players: dict[int, User] = players
+        self.max_players = max_players
+        self.min_players = min_players
+        self.auto_start = auto_start
+        self.status = "open"
+        self.lobby = lobby
+
+    def __str__(self):
+        return f"Room({self.name}, {len(self.players)}/{self.max_players} players, {self.status})"
+
+    def __repr__(self):
+        return json.dumps(
+            {
+                "name": self.name,
+                "players": [str(player) for player in self.players],
+                "max_players": self.max_players,
+                "min_players": self.min_players,
+                "auto_start": self.auto_start,
+                "status": self.status,
+                "lobby": self.lobby,
+            }
+        )
+
+    def update(self, room_dict: str | dict):
+        if isinstance(room_dict, str):
+            room_dict = json.loads(room_dict)
+
+        self.max_players = room_dict.get("max_players", self.max_players)
+        self.min_players = room_dict.get("min_players", self.min_players)
+        self.auto_start = room_dict.get("auto_start", self.auto_start)
+        self.status = room_dict.get("status", self.status)
+
+        if "users" in room_dict:
+            self.players = [
+                self.__client.get_user_by_id(user_id) for user_id in room_dict["users"]
+            ]
+
+    def broadcast(self, message: dict, excluded_users: list[int] = None):
+        """Send a message to everyone in this room."""
+        self.__client._send(RoomMessage(message, self.name, excluded_users))
+
+    def start(self):
+        if len(self.players) < self.min_players:
+            return False
+
+        raise NotImplementedError("Client Room.start() not implemented")
+
+    @staticmethod
+    def parse(client: Client, room_dict: str | dict):
+        if isinstance(room_dict, str):
+            room_dict = json.loads(room_dict)
+
+        return Room(
+            client=client,
+            name=room_dict["name"],
+            players=[
+                client.get_user_by_id(user_id)
+                for user_id in room_dict["users"]
+                # if client.get_user_by_id(user_id)
+            ],
+            max_players=room_dict["max_players"],
+            min_players=room_dict["min_players"],
+            auto_start=room_dict["auto_start"],
+            lobby=room_dict["lobby"],
+        )
