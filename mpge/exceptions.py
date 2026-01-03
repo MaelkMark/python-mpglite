@@ -1,27 +1,40 @@
-class MPGEException(Exception):
-    """Base for MPGE Exceptions"""
+class MPGEError(Exception):
+    """Base for MPGE Errors"""
+
     pass
 
 
-class InvalidURIError(MPGEException):
-    """MPGE Exception ✦ Raised when the URI is incorrectly formatted."""
+class InvalidURIError(MPGEError):
+    """MPGE Error ✦ Raised when the URI is incorrectly formatted."""
+
     pass
 
 
-class ServerNotFoundError(MPGEException):
-    """MPGE Exception ✦ Raised when the server is down or the IP/port is wrong."""
+class ServerNotFoundError(MPGEError):
+    """MPGE Error ✦ Raised when the server is down or the IP/port is wrong."""
+
     pass
 
 
-class AuthenticationError(MPGEException):
-    """MPGE Exception ✦ Raised when the handshake fails (e.g. wrong version)."""
+class AuthenticationError(MPGEError):
+    """MPGE Error ✦ Raised when the handshake fails (e.g. wrong version)."""
+
     pass
 
 
-class ConnectionLostError(MPGEException):
-    """MPGE Exception ✦ Raised when the internet cuts out mid-game."""
+class ConnectionLostError(MPGEError):
+    """MPGE Error ✦ Raised when the internet cuts out mid-game."""
+
     pass
 
-class SignatureError(MPGEException):
-    """MPGE Exception ✦ Raised when a callback is missing required parameters."""
+
+class SignatureError(MPGEError):
+    """MPGE Error ✦ Raised when a callback is missing required parameters."""
+
+    pass
+
+
+class UserLeftError(MPGEError):
+    """MPGE Error ✦ Raised when the server wants to interact with a user that left the room."""
+
     pass

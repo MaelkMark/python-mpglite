@@ -4,7 +4,7 @@ from . import message
 from . import exceptions
 
 from .message import Message, Question, Answer
-from .exceptions import MPGEException, ServerNotFoundError, ConnectionLostError
+from .exceptions import MPGEError, ServerNotFoundError, ConnectionLostError, UserLeftError
 
 __version__ = "0.1.0"
 
@@ -16,7 +16,8 @@ __all__ = [
     "Message",
     "Question",
     "Answer",
-    "MPGEException",
+    "MPGEError",
     "ServerNotFoundError",
-    "ConnectionLostError"
+    "ConnectionLostError",
+    "UserLeftError"
 ]

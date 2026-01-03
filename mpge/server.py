@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from .utils import *
 from .message import *
+from .exceptions import *
 
 import threading
 import websockets
@@ -14,16 +17,18 @@ from websockets.asyncio.server import ServerConnection
 
 
 class User:
-    id_counter = 0
+    id_counter: int = 0
 
     def __init__(self, socket: ServerConnection, username: str | None = None):
         self.socket = socket
 
         User.id_counter += 1
-        self.user_id = User.id_counter
+        self.user_id: int = User.id_counter
 
-        self.username = username if username else f"Player {self.user_id}"
+        self.username: str = username if username else f"Player {self.user_id}"
         self.current_room: Room | None = None
+        self.alive = True
+        self.pending_questions: list[Question] = []
 
     def __str__(self):
         return json.dumps({"user_id": self.user_id, "username": self.username})
@@ -32,6 +37,7 @@ class User:
         """Helper to send JSON data to this specific user."""
         try:
             # print(f"Sending {str(message)} to user {self.user_id}")
+
             await self.socket.send(str(message))
             return True
         except websockets.ConnectionClosed:
@@ -44,14 +50,37 @@ class User:
 
     async def _ask(self, message: Message, process: bool = False) -> Message:
         """Sends a Question and waits for an Answer. Returns the answer Message object."""
+        if not self.alive:
+            raise UserLeftError(
+                f"User #{self.user_id} ({self.username}) has already left the game."
+            )
+
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
-        def callback(response):
+        def callback(response, question_id):
             if not future.done():
+                if isinstance(response, Exception):
+                    if question in self.pending_questions:
+                        self.pending_questions.remove(question)
+                    loop.call_soon_threadsafe(future.set_exception, response)
+                    return
+
+                self.pending_questions = [
+                    question
+                    for question in self.pending_questions
+                    if question.question_id != question_id
+                ]
+                print(
+                    f"Answer received for question {question.question_id} from user #{self.user_id}"
+                )
+                print("Pending questions:", self.pending_questions)
                 loop.call_soon_threadsafe(future.set_result, response)
 
-        await self._send(Question(message, callback, process=process))
+        question: Question = Question(message, callback, process=process)
+        self.pending_questions.append(question)
+        # print(f"Sending question #{question.question_id} to user #{self.user_id}")
+        await self._send(question)
         return await future
 
     def ask(self, message: Any, timeout: int | None = None) -> Any:
@@ -62,18 +91,36 @@ class User:
         future = asyncio.run_coroutine_threadsafe(self._ask(message_object), loop)
 
         try:
+            # The response is a ClientMessage
             return future.result(timeout=timeout).message
         except TimeoutError:
             return None
 
-    def _disconnected(self, server):
+    async def _disconnected(self):
         print(f"User {self.user_id} disconnected unexpectedly.")
-        room = self.current_room
-        if room is not None:
-            room._remove_user(self)
+        self.alive = False
 
-            if len(room.users) == 0:
-                server._delete_room(room.name)
+        error = UserLeftError(
+            f"User #{self.user_id} ({self.username}) has already left the game."
+        )
+
+        for question in list(self.pending_questions):
+            if question in Question.pending:
+                Question.pending.remove(question)
+            if question.callback:
+                question.callback(error, question.question_id)
+
+        self.pending_questions.clear()
+
+        if self.current_room is not None:
+            await self.current_room._remove_user(self)
+
+    def in_room(self, room: Room | str) -> bool:
+        return (
+            self.current_room == room
+            if isinstance(room, Room)
+            else self.current_room.name == room
+        )
 
 
 class Room:
@@ -89,6 +136,7 @@ class Room:
         self.server = server
         self.name = name
         self.users: dict[int, User] = {}
+        self.wants_rematch: list[int] = []
         self.max_players = max_players
         self.min_players = min_players
         self.auto_start = auto_start
@@ -98,6 +146,10 @@ class Room:
     @property
     def players(self):
         return list(self.users.values())
+
+    @property
+    def current_players(self):
+        return [user for user in self.players if self.user_in_room(user)]
 
     def __str__(self):
         return json.dumps(
@@ -112,23 +164,19 @@ class Room:
             }
         )
 
-    async def _broadcast(self, data: dict, excluded_users: list[int] = None):
-        """
-        Send a message to everyone in this room.
+    def user_in_room(self, user: User) -> bool:
+        return user.current_room == self
 
-        Args:
-            data (dict): data to send, it will be converted into a JSON string.
-            excluded_users (list[int]): list of user IDs to whom you don't want to send the message.
-        """
+    async def _broadcast(self, message: Message, excluded_users: list[int] = None):
+        """Send a message to everyone in this room."""
         if excluded_users is None:
             excluded_users = []
 
-        message = json.dumps(data)
         for user_id, user in self.users.items():
             if user_id not in excluded_users:
                 await user._send(message)
 
-    def broadcast(self, data: dict, excluded_users: list[int] = None):
+    def _broadcast_sync(self, message: Message, excluded_users: list[int] = None):
         """
         Synchronous version of _broadcast.
         """
@@ -136,7 +184,16 @@ class Room:
             return
 
         loop = next(iter(self.users.values())).socket.loop
-        asyncio.run_coroutine_threadsafe(self._broadcast(data, excluded_users), loop)
+        asyncio.run_coroutine_threadsafe(self._broadcast(message, excluded_users), loop)
+
+    def broadcast(self, message: Any, excluded_users: list[int] = None):
+        """
+        Send a message to everyone in this room.
+        """
+        if not self.users:
+            return
+
+        return self._broadcast_sync(ServerMessage(message), excluded_users)
 
     def _add_user(self, user: User) -> Message:
         if len(self.users) >= self.max_players:
@@ -145,39 +202,76 @@ class Room:
                 f'Room "{self.name}" is full. Cannot add user #{user.user_id}.',
             )
 
+        if self.status != "open":
+            return ErrorMessage(
+                "ERR_ROOM_NOT_OPEN",
+                f'Room "{self.name}" is not open. Cannot add user #{user.user_id}.',
+            )
+
         self.users[user.user_id] = user
 
-        print("sending RoomJoinedMessage")
         asyncio.create_task(
             self.server.users[user.user_id]._send(RoomJoinedMessage(self.name))
         )
 
-        print(
-            f"Auto start: {self.auto_start}, users: {len(self.users)}, max_players: {self.max_players}"
-        )
         if self.auto_start and len(self.users) == self.max_players:
             print(f'Starting room "{self.name}" automatically...')
             self.start()
 
         return OKMessage()
 
-    def _remove_user(self, user: User):
+    async def _remove_user(self, user: User):
+        print(f"Removing user #{user.user_id} from room '{self.name}'")
+
         user_id = user.user_id
         if user_id in self.users:
             user.current_room = None
-            del self.users[user_id]
+            # del self.users[user_id]
+
+        if not self.lobby:
+            if user_id in self.wants_rematch:
+                self.wants_rematch.remove(user_id)
+
+            delete = smart_call(
+                self.server.on_room_left, room=self, user=user, server=self.server
+            )
+
+            await self._broadcast(RoomLeftMessage(user_id, self.name))
+            if len(self.users) == 0 or delete:
+                self.server._delete_room(self.name)
+
+    def _wants_rematch(self, user: User) -> Message:
+        if user.user_id not in self.users:
+            return ErrorMessage(
+                "ERR_REMATCH_USER_NOT_IN_ROOM",
+                f'User #{user.user_id} is not in room "{self.name}".',
+            )
+
+        if user.user_id not in self.wants_rematch:
+            self.wants_rematch.append(user.user_id)
+
+        print(
+            f"Rematch requested by user #{user.user_id} in room '{self.name}' ({len(self.wants_rematch)}/{len(self.users)})"
+        )
+
+        if len(self.wants_rematch) == len(self.users):
+            self.wants_rematch = []
+            return self.rematch()
+
+        return OKMessage()
 
     async def _ask_everybody_async(
         self, message: Message, process: bool = False
     ) -> dict[int, Any]:
         """Internal async handler to ask everyone at the same time."""
         tasks = {
-            user.user_id: user._ask(message, process=process)
+            user.user_id: (user._ask(message, process=process))
             for user in self.users.values()
+            if user.in_room(self)
         }
 
-        results = await asyncio.gather(*tasks.values())
-        results = [message.message for message in results]
+        results: list[ClientMessage] = await asyncio.gather(*tasks.values())
+        results: list[Any] = [message.message for message in results]
 
         return dict(zip(tasks.keys(), results))
 
@@ -185,6 +279,8 @@ class Room:
         """
         Asks every player a question and returns a dict of {user_id: Message}.
         """
+        print(f"Asking everybody in room '{self.name}'", message)
+
         if not self.users:
             return {}
 
@@ -209,6 +305,11 @@ class Room:
         Asks a specific player a question and returns the answer as a string.
         If the player is not in the room, or if it times out, returns None.
         """
+        if not self.user_in_room(player):
+            raise UserLeftError(
+                f"User #{self.user_id} ({self.username}) has already left the game."
+            )
+
         return self.server.ask_player(player, message, timeout=timeout)
 
     def start(self) -> Message:
@@ -220,18 +321,42 @@ class Room:
             return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players.")
 
         self.status = "started"
-        asyncio.create_task(self.server._rooms_updated())
+
         self.server._room_started(self)
-        message = RoomStartedMessage(self)
-        self.broadcast(message)
+
+        message = RoomStartedMessage(self.name)
+        asyncio.create_task(self._broadcast(message))
         return message
+
+    async def _end(self) -> Message:
+        self.status = "ended"
+
+        # Remove users who left the room earlier
+        for user_id in [
+            user_id for user_id, user in self.users.items() if user.current_room != self
+        ]:
+            del self.users[user_id]
+
+        await self._broadcast(RoomEndedMessage(self.name))
+        await self.server._rooms_updated()
+        return RoomEndedMessage(self.name)
+
+    def end(self) -> Message:
+        loop = next(iter(self.users.values())).socket.loop
+        future = asyncio.run_coroutine_threadsafe(self._end(), loop)
+        return future.result()
+
+    def rematch(self) -> Message:
+        print(f"Rematching room '{self.name}'...")
+        return self.start()
+
+    def delete(self) -> Message:
+        return self.server._delete_room(self.name)
 
 
 class Lobby(Room):
-    def __init__(
-        self, name="lobby", max_players=math.inf, min_players=0, auto_start=True
-    ):
-        super().__init__(name, max_players, min_players, auto_start, lobby=True)
+    def __init__(self, server):
+        super().__init__(server, "lobby", math.inf, 0, auto_start=False, lobby=True)
 
 
 class Server:
@@ -240,16 +365,23 @@ class Server:
         host: str,
         port: int,
         logging: bool = False,
+        exception_when_user_leaves: bool = False,
         on_room_start: Callable = None,
+        on_room_left: Callable = None,
         on_message: Callable = None,
         on_question: Callable = None,
     ):
+        # * Server properties
         self.host: str = host
         self.port: int = port
-        self.logging: bool = logging
-        self.rooms: dict[str, Room] = {"lobby": Lobby()}
+        self.rooms: dict[str, Room] = {"lobby": Lobby(self)}
         self.users: dict[int, User] = {}
 
+        # * Options
+        self.logging: bool = logging
+        self.exception_when_user_leaves: bool = exception_when_user_leaves
+
+        # * Event handler callbacks
         # smart_kwargs tests if the user passed proper properties to the callback functions.
         self.on_room_start: Callable | None = on_room_start
         smart_kwargs(self.on_room_start, room=None, server=None)
@@ -259,6 +391,9 @@ class Server:
 
         self.on_question: Callable | None = on_question
         smart_kwargs(self.on_question, question=None, user=None, server=None)
+
+        self.on_room_left: Callable | None = on_room_left
+        smart_kwargs(self.on_room_left, room=None, user=None, server=None)
 
     async def _main(self):
         async with websockets.serve(self._handler, self.host, self.port):
@@ -305,19 +440,24 @@ class Server:
                     await self._handle_message(user, message)
 
         except ConnectionClosed:
-            user._disconnected(self)
+            await user._disconnected()
             await self._rooms_updated()
             await self._users_updated()
+
+            if self.exception_when_user_leaves:
+                raise UserLeftError(
+                    f"User #{self.user_id} ({self.username}) left the game."
+                )
         finally:
             if user.current_room:
-                user.current_room._remove_user(user)
+                await user.current_room._remove_user(user)
             if user.user_id in self.users:
                 del self.users[user.user_id]
 
     async def _handle_message(self, user: User, message: Message):
         match message.type:
             case "join_room":
-                user._send(await self._join_room(user, message.room))
+                await self._join_room(user, message.room)
 
             case "create_room":
                 await self._create_room(
@@ -333,8 +473,8 @@ class Server:
                 if self.logging:
                     print(f'User {user.user_id} sent: "{content}"')
 
-                if message.room_name:
-                    room = self.rooms[message.room_name]
+                if message.room:
+                    room = self.rooms[message.room]
                 else:
                     room = user.current_room
 
@@ -354,56 +494,91 @@ class Server:
     async def _handle_question(
         self, question: Question, question_message: Message, user: User
     ):
-        answer_message = None
+        async def answer(answer_message: Message):
+            if self.logging:
+                print(
+                    f"Answering question {question.question_id} with {answer_message}"
+                )
+
+            await user._send(
+                Answer(question.question_id, answer_message, process=question.process)
+            )
+
         match question_message.type:
             case "init_request":
-                answer_message = MessageBundle(
-                    [
-                        InitMessage(user.user_id, len(self.users)),
-                        self._get_user_list_message(),
-                        self._get_room_list_message(),
-                    ]
+                await answer(
+                    MessageBundle(
+                        [
+                            InitMessage(user.user_id, len(self.users)),
+                            self._get_user_list_message(),
+                            self._get_room_list_message(),
+                        ]
+                    )
                 )
             case "get_room_list":
-                answer_message = self._get_room_list_message()
+                await answer(self._get_room_list_message())
 
             case "join_room":
-                answer_message = await self._join_room(user, question_message.room)
+                await answer(await self._join_room(user, question_message.room))
+
+            case "leave_room":
+                if user.current_room is None:
+                    await answer(
+                        ErrorMessage("ERR_NOT_IN_ROOM", "You are not in a room.")
+                    )
+
+                await answer(await self._leave_room(user, user.current_room.name))
+
+                if self.exception_when_user_leaves:
+                    raise UserLeftError(
+                        f"User #{self.user_id} ({self.username}) left the game."
+                    )
+
+            case "rematch":
+                room = user.current_room
+                if room is None:
+                    await answer(
+                        ErrorMessage(
+                            "ERR_REMATCH_NO_ROOM",
+                            "You are not in a room, can't rematch.",
+                        )
+                    )
+                else:
+                    await answer(room._wants_rematch(user))
 
             case "set_username":
                 username = question_message.username
                 if any(user.username == username for user in self.users.values()):
-                    answer_message = ErrorMessage(
-                        "ERR_USERNAME_TAKEN", "Username already taken"
+                    await answer(
+                        ErrorMessage("ERR_USERNAME_TAKEN", "Username already taken")
                     )
                 else:
                     user.username = username
-                    answer_message = Message("username", username=user.username)
+                    await answer(Message("username", username=user.username))
                     await self._users_updated()
 
             case "create_room":
-                answer_message = await self._create_room(
-                    user,
-                    room_name=question_message.room,
-                    min_players=question_message.min_players,
-                    max_players=question_message.max_players,
-                    auto_start=question_message.auto_start,
-                )
-
-            case "client_message":
-                answer_message = ServerMessage(
-                    smart_call(
-                        self.on_question,
-                        question=question_message.message,
-                        user=user,
-                        server=self,
+                await answer(
+                    await self._create_room(
+                        user,
+                        room_name=question_message.room,
+                        min_players=question_message.min_players,
+                        max_players=question_message.max_players,
+                        auto_start=question_message.auto_start,
                     )
                 )
 
-        if answer_message is not None:
-            await user._send(
-                Answer(question.question_id, answer_message, process=question.process)
-            )
+            case "client_message":
+                await answer(
+                    ServerMessage(
+                        smart_call(
+                            self.on_question,
+                            question=question_message.message,
+                            user=user,
+                            server=self,
+                        )
+                    )
+                )
 
     async def _join_room(self, user: User, room_name: str) -> Message:
         if room_name not in self.rooms or self.rooms[room_name].lobby:
@@ -418,11 +593,29 @@ class Server:
             return OKMessage()
 
         if user.current_room:
-            user.current_room._remove_user(user)
+            await user.current_room._remove_user(user)
 
-        room._add_user(user)
+        result = room._add_user(user)
         user.current_room = room
 
+        await self._rooms_updated()
+        return result
+
+    async def _leave_room(self, user: User, room_name: str) -> Message:
+        if room_name not in self.rooms:
+            return ErrorMessage(
+                "ERR_NO_SUCH_ROOM",
+                f"There's no room named {room_name}.",
+            )
+
+        if self.rooms[room_name].lobby:
+            return ErrorMessage("ERR_LOBBY_CANNOT_BE_LEFT", "You can't leave lobby.")
+
+        room = self.rooms[room_name]
+        await room._remove_user(user)
+        user.current_room = None
+
+        await self._users_updated()
         await self._rooms_updated()
         return OKMessage()
 
@@ -453,6 +646,8 @@ class Server:
             return ErrorMessage(
                 "ERR_LOBBY_CANNOT_BE_DELETED", "Lobby cannot be deleted."
             )
+
+        asyncio.create_task(room._broadcast(RoomDeletedMessage(room.name)))
 
         for user in room.users.values():
             user.current_room = None
@@ -519,6 +714,20 @@ class Server:
     def start(self):
         """Starts the websocket server"""
         asyncio.run(self._main())
+
+    @staticmethod
+    def response_ok(response: Any):
+        if not isinstance(response, Message):
+            return True
+
+        return response.ok
+
+    @staticmethod
+    def response_alive(response: Any):
+        if not isinstance(response, Message):
+            return True
+
+        return response.alive
 
 
 print(

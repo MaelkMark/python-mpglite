@@ -24,14 +24,40 @@ def on_room_joined(room, client):
     print(f"Now you are in {room.name} {client.room.name}")
 
 
-def on_room_start():
+def on_room_started(room):
+    print(repr(room))
     print(f"The game begins!")
 
 
-def on_question(question):
+def on_room_ended(client: Client):
+    global status
+    
+    print(f"The game has ended!")
+    if confirm("Do you want to rematch?"):
+        client.rematch()
+    else:
+        client.leave_room()
+        status = "room_list"
+
+def on_room_left(user, room, client):
+    print(f"{user.username} left {room.name}")
+
+
+def on_room_deleted(room_name):
+    global status
+    
+    print(f"{room_name} has been deleted")
+    status = "room_list"
+
+
+def on_question(question, client: Client):
     match question["type"]:
         case "move":
-            return decision("Kő/papír/olló?", ["K", "P", "O"])
+            choice = decision("Kő/papír/olló?", ["K", "P", "O", "Q"])
+            if choice == "Q":
+                client.leave_room()
+            else:
+                return choice
 
 
 def on_message(message):
@@ -74,6 +100,10 @@ def main():
         on_question=on_question,
         on_message=on_message,
         on_room_joined=on_room_joined,
+        on_room_started=on_room_started,
+        on_room_ended=on_room_ended,
+        on_room_left=on_room_left,
+        on_room_deleted=on_room_deleted
     )
     client.connect()
 

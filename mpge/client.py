@@ -23,41 +23,64 @@ class Client:
         logging: bool = False,
         on_message: Callable = None,
         on_room_joined: Callable = None,
-        on_room_start: Callable = None,
+        on_room_started: Callable = None,
+        on_room_ended: Callable = None,
+        on_room_deleted: Callable = None,
+        on_room_left: Callable = None,
         on_room_list: Callable = None,
         on_user_list: Callable = None,
         on_question: Callable = None,
     ):
+        #* WebSocket properties
         self.uri: str = f"ws://{host}:{port}"
         self.ws: ClientConnection = None
         self._running: bool = False
+        
+        #* User properties
         self.user_id: int | None = None
         self.username: str | None = None
-        self.logging: bool = logging
         self.room: Room | None = None
+        
+        self.logging: bool = logging
         self._users: list[User] = []
-        self._users_last: list[Room] = self._users.copy()
+        self._users_last: list[Room] = []
         self._rooms: list[Room] = []
         self._rooms_last: list[str] = []
 
-        # Event handlers
+        #* Event handler callbacks
+        # When the client receives a ServerMessage message from the server
         self.on_message: Callable = on_message
         smart_kwargs(self.on_message, message=None, client=None)
 
-        self.on_question: Callable = (
-            on_question  # When the server sends a ServerMessage question
-        )
+        # When the client receives a ServerMessage question from the server
+        self.on_question: Callable = on_question
         smart_kwargs(self.on_question, question=None, client=None)
 
+        # When the client joins a room (room_joined)
         self.on_room_joined: Callable = on_room_joined
         smart_kwargs(self.on_room_joined, room=None, client=None)
 
-        self.on_room_start: Callable = on_room_start
-        smart_kwargs(self.on_room_start, room=None, client=None)
+        # When the client's room starts (room_started)
+        self.on_room_started: Callable = on_room_started
+        smart_kwargs(self.on_room_started, room=None, client=None)
 
+        # When the client's room ends (room_ended)
+        self.on_room_ended: Callable = on_room_ended
+        smart_kwargs(self.on_room_ended, room=None, client=None)
+
+        # When the client's room gets deleted (room_deleted)
+        self.on_room_deleted: Callable = on_room_deleted
+        smart_kwargs(self.on_room_deleted, room_name=None, client=None)
+
+        # When someone leaves the client's room (room_left)
+        self.on_room_left: Callable = on_room_left
+        smart_kwargs(self.on_room_left, user=None, room=None, client=None)
+
+        # When the server sends a RoomListMessage
         self.on_room_list: Callable = on_room_list
         smart_kwargs(self.on_room_list, rooms=None, client=None)
 
+        # When the server sends a UserListMessage
         self.on_user_list: Callable = on_user_list
         smart_kwargs(self.on_user_list, users=None, client=None)
 
@@ -76,21 +99,27 @@ class Client:
 
     @property
     def rooms(self):
-        self._rooms_last = [repr(room) for room in self._rooms]
+        self._rooms_last = [repr(room) for room in self._rooms_filtered]
         return self._rooms_filtered
 
     @property
     def rooms_changed(self):
-        return [repr(room) for room in self._rooms] != self._rooms_last
+        return [repr(room) for room in self._rooms_filtered] != self._rooms_last
 
     @property
     def lobby(self):
         return next((room for room in self._rooms if room.lobby), None)
 
+    def _run_in_thread(self, func, **kwargs):
+        if func:
+            threading.Thread(target=smart_call, args=(func,), kwargs=kwargs, daemon=True).start()
+
     def _listen(self):
         while self._running:
             try:
                 message_json = self.ws.recv()
+                if self.logging:
+                    print(f"Message received: {message_json}")
                 message = Message.parse(message_json)
 
                 payload = message
@@ -134,8 +163,10 @@ class Client:
         match message.type:
             case "init":
                 self.user_id = message.user_id
+
             case "username":
                 self.username = message.username
+
             case "room_list":
                 current_room_names = []
                 for room_data in message.rooms:
@@ -152,7 +183,8 @@ class Client:
 
                 self._rooms = [r for r in self._rooms if r.name in current_room_names]
 
-                smart_call(self.on_room_list, rooms=self._rooms_filtered)
+                self._run_in_thread(self.on_room_list, rooms=self._rooms_filtered)
+
             case "user_list":
                 current_ids = []
                 for user_data in message.users:
@@ -167,25 +199,37 @@ class Client:
                 # Remove users that are no longer connected
                 self._users = [u for u in self._users if u.user_id in current_ids]
 
-                smart_call(self.on_user_list, users=self.users, client=self)
+                self._run_in_thread(self.on_user_list, users=self.users, client=self)
 
             case "room_joined":
                 room = self.get_room_by_name(message.room)
                 self.room = room
-                smart_call(self.on_room_joined, room=room, client=self)
+                self._run_in_thread(self.on_room_joined, room=room, client=self)
 
-            case "room_start":
-                smart_call(self.on_room_start, room=message.room, client=self)
+            case "room_started":
+                room = self.get_room_by_name(message.room)
+                self._run_in_thread(self.on_room_started, room=room, client=self)
+
+            case "room_ended":
+                room = self.get_room_by_name(message.room)
+                self._run_in_thread(self.on_room_ended, room=room, client=self)
+
+            case "room_deleted":
+                self._run_in_thread(self.on_room_deleted, room_name=message.room, client=self)
+
+            case "room_left":
+                room = self.get_room_by_name(message.room)
+                user = self.get_user_by_id(message.user_id)
+                self._run_in_thread(self.on_room_left, user=user, room=room, client=self)
 
             case "server_message":
-                smart_call(self.on_message, message=message.message, client=self)
+                self._run_in_thread(self.on_message, message=message.message, client=self)
 
     def _handle_question(self, question: Message):
         message = question.parsed_message
         answer_message = None
         match message.type:
             case "server_message":
-                answer = None
                 answer = smart_call(
                     self.on_question, question=message.message, client=self
                 )
@@ -258,6 +302,18 @@ class Client:
     def join_room(self, room_name: str) -> Message:
         """Joins room"""
         return self._ask(JoinRoomMessage(room_name))
+
+    def leave_room(self) -> Message:
+        """Leaves current room"""
+        return self._ask(LeaveRoomMessage())
+
+    def rematch(self) -> Message:
+        if self.room is None:
+            return ErrorMessage(
+                "ERR_REMATCH_NO_ROOM", "You are not in a room, can't rematch."
+            )
+
+        return self._ask(RematchMessage())
 
     def get_room_list(self):
         """Returns a list of all rooms."""
@@ -345,10 +401,8 @@ class Room:
         self.status = "open"
         self.lobby = lobby
 
-    def __str__(self):
-        return f"Room({self.name}, {len(self.players)}/{self.max_players} players, {self.status})"
-
-    def __repr__(self):
+    @property
+    def json(self):
         return json.dumps(
             {
                 "name": self.name,
@@ -360,6 +414,12 @@ class Room:
                 "lobby": self.lobby,
             }
         )
+
+    def __str__(self):
+        return f"Room({self.name}, {len(self.players)}/{self.max_players} players, {self.status})"
+
+    def __repr__(self):
+        return f"Room({self.json})"
 
     def update(self, room_dict: str | dict):
         if isinstance(room_dict, str):

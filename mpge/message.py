@@ -1,3 +1,5 @@
+from .utils import *
+
 import json
 from uuid import uuid4
 
@@ -17,7 +19,13 @@ class Message:
     ):
         self.type = message_type
         self.description = description
-        self.dict = {"type": message_type, **properties}
+        self.dict = {
+            "type": message_type,
+            **{
+                key: str(value) if isinstance(value, Message) else value
+                for key, value in properties.items()
+            },
+        }
         self.json = json.dumps(self.dict)
 
         for key, value in properties.items():
@@ -35,7 +43,7 @@ class Message:
     @property
     def ok(self):
         return not isinstance(self, ErrorMessage)
-    
+
     @staticmethod
     def parse(message: str | dict):
         if isinstance(message, Message):
@@ -45,7 +53,7 @@ class Message:
             dictionary = message
         else:
             dictionary = json.loads(message)
-            
+
         message_type = dictionary["type"]
         properties = {key: value for key, value in dictionary.items() if key != "type"}
 
@@ -57,24 +65,40 @@ class Message:
 
 class OKMessage(Message):
     TYPE = "ok"
+
     def __init__(self, **properties):
-        super().__init__(self.TYPE, "Indicates that the request was successful", **properties)
+        super().__init__(
+            self.TYPE, "Indicates that the request was successful", **properties
+        )
 
 
 class ServerMessage(Message):
     TYPE = "server_message"
+
     def __init__(self, message: any, **properties):
-        super().__init__(self.TYPE, "A question message from the server", message=message, **properties)
+        super().__init__(
+            self.TYPE,
+            "A question message from the server",
+            message=message,
+            **properties,
+        )
 
 
 class ClientMessage(Message):
     TYPE = "client_message"
+
     def __init__(self, message: any, **properties):
-        super().__init__(self.TYPE, "An answer to a ServerMessage from the server", message=message, **properties)
+        super().__init__(
+            self.TYPE,
+            "An answer to a ServerMessage from the server",
+            message=message,
+            **properties,
+        )
 
 
 class InitMessage(Message):
     TYPE = "init"
+
     def __init__(self, user_id: int, online_users: int, **properties):
         super().__init__(
             self.TYPE,
@@ -87,11 +111,12 @@ class InitMessage(Message):
 
 class RoomMessage(Message):
     TYPE = "room_message"
+
     def __init__(
         self,
         message: str,
         excluded_users: list[int] = [],
-        room_name: str | None = None,
+        room: str | None = None,
         **properties,
     ):
         super().__init__(
@@ -99,13 +124,14 @@ class RoomMessage(Message):
             "send a message to the current room",
             message=message,
             excluded_users=excluded_users,
-            room_name=room_name,
+            room=room,
             **properties,
         )
 
 
 class PrivateMessage(Message):
     TYPE = "private_message"
+
     def __init__(self, target_id: int, message: str | dict, **properties):
         super().__init__(
             self.TYPE,
@@ -118,39 +144,86 @@ class PrivateMessage(Message):
 
 class JoinRoomMessage(Message):
     TYPE = "join_room"
+
     def __init__(self, room: str, **properties):
         super().__init__(
             self.TYPE, "join a room with the given name", room=room, **properties
         )
 
 
+class LeaveRoomMessage(Message):
+    TYPE = "leave_room"
+
+    def __init__(self, **properties):
+        super().__init__(self.TYPE, "leave the current room", **properties)
+
+
+class RematchMessage(Message):
+    TYPE = "rematch"
+
+    def __init__(self, **properties):
+        super().__init__(self.TYPE, "play a rematch in the current room", **properties)
+
+
 class RoomJoinedMessage(Message):
     TYPE = "room_joined"
+
     def __init__(self, room: str, **properties):
         super().__init__(
             self.TYPE,
             "sent to a client when they join a room",
-            room=str(room),
+            room=room,
             **properties,
         )
 
 
 class RoomLeftMessage(Message):
     TYPE = "room_left"
-    def __init__(self, user_id, **properties):
+
+    def __init__(self, user_id: int, room: str, **properties):
         super().__init__(
-            self.TYPE, "user {user_id} left the room", user_id=user_id, **properties
+            self.TYPE,
+            "user {user_id} left the room",
+            user_id=user_id,
+            room=room,
+            **properties,
         )
 
 
 class RoomStartedMessage(Message):
     TYPE = "room_started"
-    def __init__(self, room, **properties):
-        super().__init__(self.TYPE, "room started", room=str(room), **properties)
+
+    def __init__(self, room: str, **properties):
+        super().__init__(self.TYPE, "room started", room=room, **properties)
+
+
+class RoomEndedMessage(Message):
+    TYPE = "room_ended"
+
+    def __init__(self, room: str, **properties):
+        super().__init__(
+            self.TYPE,
+            "sent when a room ends",
+            room=room,
+            **properties,
+        )
+
+
+class RoomDeletedMessage(Message):
+    TYPE = "room_deleted"
+
+    def __init__(self, room: str, **properties):
+        super().__init__(
+            self.TYPE,
+            "sent when a room gets deleted by the server, or when every client leaves the room",
+            room=room,
+            **properties,
+        )
 
 
 class CreateRoomMessage(Message):
     TYPE = "create_room"
+
     def __init__(
         self,
         room: str,
@@ -172,6 +245,7 @@ class CreateRoomMessage(Message):
 
 class RoomListMessage(Message):
     TYPE = "room_list"
+
     def __init__(self, rooms: list[str], **properties):
         super().__init__(
             self.TYPE,
@@ -183,6 +257,7 @@ class RoomListMessage(Message):
 
 class UserListMessage(Message):
     TYPE = "user_list"
+
     def __init__(self, users: list[str], **properties):
         super().__init__(
             self.TYPE,
@@ -194,6 +269,7 @@ class UserListMessage(Message):
 
 class ErrorMessage(Message):
     TYPE = "error"
+
     def __init__(self, error_code, error_message, severity="error", **properties):
         super().__init__(
             self.TYPE,
@@ -215,6 +291,7 @@ class ErrorMessage(Message):
 
 class MessageBundle(Message):
     TYPE = "message_bundle"
+
     def __init__(self, messages: list[Message], **properties):
         super().__init__(
             self.TYPE,
@@ -272,7 +349,9 @@ class Question(Message):
         # print(f"Message {self.question_id} got answered: {repr(message)}")
         Question.pending.remove(self)
         if self.callback:
-            self.callback(message)
+            # Pass question_id, if the callback is interested
+            smart_call(self.callback, response=message, question_id=self.question_id)
+            # self.callback(message)
 
     @classmethod
     def answer_question(cls, question_id: str, message: Message | None = None):
@@ -286,7 +365,14 @@ class Question(Message):
 
 class Answer(Message):
     TYPE = "answer"
-    def __init__(self, question_id: str, message: Message | str | dict, process: bool = False, **properties):
+
+    def __init__(
+        self,
+        question_id: str,
+        message: Message | str | dict,
+        process: bool = False,
+        **properties,
+    ):
         if not isinstance(message, Message):
             message = Message.parse(message)
 
@@ -308,5 +394,5 @@ class Answer(Message):
 
 
 class OKAnswer(Answer):
-    def __init__(self, question_id, process = False, **properties):
+    def __init__(self, question_id, process=False, **properties):
         super().__init__(question_id, OKMessage(), process, **properties)
