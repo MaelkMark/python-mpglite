@@ -254,7 +254,14 @@ class Client:
         def callback(response):
             future.set_result(response)
 
-        self._send(Question(message, callback, process=process))
+        self._send(
+            Question(
+                message,
+                callback,
+                process=process,
+                sender_id=self.user_id if self.user_id is not None else "client",
+            )
+        )
         return future.result()
 
     def ask(self, message: Any) -> Message:

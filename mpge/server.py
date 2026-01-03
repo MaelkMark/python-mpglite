@@ -77,7 +77,7 @@ class User:
                 print("Pending questions:", self.pending_questions)
                 loop.call_soon_threadsafe(future.set_result, response)
 
-        question: Question = Question(message, callback, process=process)
+        question: Question = Question(message, callback, process=process, sender_id=0)
         self.pending_questions.append(question)
         # print(f"Sending question #{question.question_id} to user #{self.user_id}")
         await self._send(question)

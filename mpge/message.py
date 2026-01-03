@@ -307,7 +307,7 @@ class MessageBundle(Message):
 
 class Question(Message):
     TYPE = "question"
-    # TODO: Better question_id
+    id_counter: int = 0
     pending: list = []
 
     def __init__(
@@ -315,11 +315,18 @@ class Question(Message):
         message: Message,
         callback: Callable = None,
         question_id: str = None,
+        sender_id: int | str | None = None,
         process: bool = False,
         **properties,
     ):
         # Serialize message content if it's an object
-        q_id = question_id if question_id else str(uuid4())
+        if question_id:
+            q_id = question_id
+        elif sender_id is not None:
+            Question.id_counter += 1
+            q_id = f"{sender_id}#{Question.id_counter}"
+        else:
+            q_id = str(uuid4())
 
         super().__init__(
             self.TYPE,
