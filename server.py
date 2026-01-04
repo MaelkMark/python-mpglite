@@ -1,5 +1,6 @@
 from mpge.server import Server, Room, User
 from mpge.exceptions import UserLeftError
+import mpge.logger
 
 def room_started(room: Room):
     print(f'ROOM "{room.name}" STARTED!')
@@ -132,9 +133,9 @@ if __name__ == "__main__":
     server = Server(
         "0.0.0.0",
         8767,
-        logging=False,
+        log_level=mpge.logger.INFO,
         on_room_start=room_started,
-        on_room_left=room_left
+        on_room_left=room_left,
     )
     # server.on_room_start = room_started
     server.start()

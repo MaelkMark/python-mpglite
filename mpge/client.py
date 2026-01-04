@@ -1,6 +1,7 @@
 from .utils import *
 from .message import *
 from .exceptions import *
+from .logger import get_logger, OFF as LOGGER_OFF
 
 import math
 import json
@@ -20,7 +21,7 @@ class Client:
         self,
         host: str,
         port: int,
-        logging: bool = False,
+        log_level: int | None = None,
         on_message: Callable = None,
         on_room_joined: Callable = None,
         on_room_started: Callable = None,
@@ -41,7 +42,7 @@ class Client:
         self.username: str | None = None
         self.room: Room | None = None
         
-        self.logging: bool = logging
+        self.logger = get_logger(loglevel=log_level if log_level else LOGGER_OFF)
         self._users: list[User] = []
         self._users_last: list[Room] = []
         self._rooms: list[Room] = []
@@ -118,8 +119,7 @@ class Client:
         while self._running:
             try:
                 message_json = self.ws.recv()
-                if self.logging:
-                    print(f"Message received: {message_json}")
+                self.logger.debug(f"Message received: {message_json}")
                 message = Message.parse(message_json)
 
                 payload = message
@@ -144,8 +144,7 @@ class Client:
                 )
 
                 for msg in messages:
-                    if self.logging:
-                        print(f"Message received: {repr(msg)}")
+                    self.logger.debug(f"Message received: {repr(msg)}")
 
                     self._handle_message(msg)
 
@@ -154,8 +153,8 @@ class Client:
             except ConnectionClosed:
                 raise ConnectionLostError("The connection was dropped by the server.")
             except Exception as e:
-                print(f"Listener error: {e}")
-                print(traceback.format_exc())
+                self.logger.critical(f"Listener error: {e}")
+                self.logger.critical(traceback.format_exc())
                 self._running = False
                 break
 
@@ -175,7 +174,7 @@ class Client:
 
                     room = self.get_room_by_name(room_data["name"])
                     if not room:
-                        room = Room.parse(self, room_data)
+                        room = Room.parse(self, room_data, self.logger)
                         self._rooms.append(room)
 
                     room.update(room_data)
@@ -272,7 +271,7 @@ class Client:
             if user.user_id == user_id:
                 return user
 
-        new_user = User(self, user_id, "Loading...", temp=True)
+        new_user = User(self, user_id, "Loading...", logger=self.logger, temp=True)
         self._users.append(new_user)
         return new_user
 
@@ -325,7 +324,6 @@ class Client:
     def get_room_list(self):
         """Returns a list of all rooms."""
         response = self._ask(Message("get_room_list"))
-        # print(repr(response))
         return response.rooms
 
     def set_username(self, username: str) -> Message:
@@ -349,12 +347,6 @@ class Client:
                 "Failed to connect: The connection was dropped by the server."
             )
 
-        # try:
-        #     self.ws = ws_connect(self.uri)
-        # except Exception as e:
-        #     print(e)
-        #     return False
-
         self._running = True
 
         # Start listening in a background thread
@@ -365,12 +357,13 @@ class Client:
 
 
 class User:
-    def __init__(self, client: Client, user_id: int, username: str, temp: bool = False):
+    def __init__(self, client: Client, user_id: int, username: str, logger, temp: bool = False):
         self.__client = client
         self.user_id = user_id
         self.username = username
         self.temp = temp
         self.alive = True
+        self.logger = logger
 
     def __str__(self):
         return (
@@ -380,19 +373,13 @@ class User:
     def send(self, message: str | dict):
         self.__client.send_private_message(self.user_id, message)
 
-    @staticmethod
-    def parse(client: Client, user_dict: str | dict):
-        if isinstance(user_dict, str):
-            user_dict = json.loads(user_dict)
-
-        return User(client, user_dict["user_id"], user_dict["username"])
-
 
 class Room:
     def __init__(
         self,
         client: Client,
         name: str,
+        logger,
         players: list[User] = [],
         max_players: int = math.inf,
         min_players: int = 2,
@@ -400,6 +387,7 @@ class Room:
         lobby: bool = False,
     ):
         self.__client = client
+        self.logger = logger
         self.name = name
         self.players: dict[int, User] = players
         self.max_players = max_players
@@ -453,7 +441,7 @@ class Room:
         raise NotImplementedError("Client Room.start() not implemented")
 
     @staticmethod
-    def parse(client: Client, room_dict: str | dict):
+    def parse(client: Client, room_dict: str | dict, logger):
         if isinstance(room_dict, str):
             room_dict = json.loads(room_dict)
 
@@ -469,4 +457,5 @@ class Room:
             min_players=room_dict["min_players"],
             auto_start=room_dict["auto_start"],
             lobby=room_dict["lobby"],
+            logger=logger
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 from .utils import *
 from .message import *
 from .exceptions import *
+from .logger import get_logger, OFF as LOGGER_OFF
 
 import threading
 import websockets
@@ -10,6 +11,7 @@ from websockets.exceptions import ConnectionClosed
 import asyncio
 import json
 import math
+from importlib.resources import files
 
 from typing import Any
 from collections.abc import Callable
@@ -19,8 +21,9 @@ from websockets.asyncio.server import ServerConnection
 class User:
     id_counter: int = 0
 
-    def __init__(self, socket: ServerConnection, username: str | None = None):
+    def __init__(self, socket: ServerConnection, logger, username: str | None = None):
         self.socket = socket
+        self.logger = logger
 
         User.id_counter += 1
         self.user_id: int = User.id_counter
@@ -71,10 +74,9 @@ class User:
                     for question in self.pending_questions
                     if question.question_id != question_id
                 ]
-                print(
+                self.logger.debug(
                     f"Answer received for question {question.question_id} from user #{self.user_id}"
                 )
-                print("Pending questions:", self.pending_questions)
                 loop.call_soon_threadsafe(future.set_result, response)
 
         question: Question = Question(message, callback, process=process, sender_id=0)
@@ -97,7 +99,7 @@ class User:
             return None
 
     async def _disconnected(self):
-        print(f"User {self.user_id} disconnected unexpectedly.")
+        self.logger.info(f"User {self.user_id} disconnected unexpectedly.")
         self.alive = False
 
         error = UserLeftError(
@@ -128,12 +130,15 @@ class Room:
         self,
         server,
         name,
+        logger,
         max_players=math.inf,
         min_players=2,
         auto_start=True,
         lobby=False,
     ):
         self.server = server
+        self.logger = logger
+        
         self.name = name
         self.users: dict[int, User] = {}
         self.wants_rematch: list[int] = []
@@ -215,13 +220,13 @@ class Room:
         )
 
         if self.auto_start and len(self.users) == self.max_players:
-            print(f'Starting room "{self.name}" automatically...')
+            self.logger.debug(f'Starting room "{self.name}" automatically...')
             self.start()
 
         return OKMessage()
 
     async def _remove_user(self, user: User):
-        print(f"Removing user #{user.user_id} from room '{self.name}'")
+        self.logger.debug(f"Removing user #{user.user_id} from room '{self.name}'")
 
         user_id = user.user_id
         if user_id in self.users:
@@ -250,7 +255,7 @@ class Room:
         if user.user_id not in self.wants_rematch:
             self.wants_rematch.append(user.user_id)
 
-        print(
+        self.logger.debug(
             f"Rematch requested by user #{user.user_id} in room '{self.name}' ({len(self.wants_rematch)}/{len(self.users)})"
         )
 
@@ -279,7 +284,7 @@ class Room:
         """
         Asks every player a question and returns a dict of {user_id: Message}.
         """
-        print(f"Asking everybody in room '{self.name}'", message)
+        self.logger.debug(f"Asking everybody in room '{self.name}'", message)
 
         if not self.users:
             return {}
@@ -295,7 +300,7 @@ class Room:
         try:
             return future.result(timeout=timeout)
         except TimeoutError:
-            print(f'Room "{self.name}": ask_everybody timed out!')
+            self.logger.warning(f'Room "{self.name}": ask_everybody timed out!')
             return {}
 
     def ask_player(
@@ -347,7 +352,7 @@ class Room:
         return future.result()
 
     def rematch(self) -> Message:
-        print(f"Rematching room '{self.name}'...")
+        self.logger.debug(f"Rematching room '{self.name}'...")
         return self.start()
 
     def delete(self) -> Message:
@@ -356,7 +361,7 @@ class Room:
 
 class Lobby(Room):
     def __init__(self, server):
-        super().__init__(server, "lobby", math.inf, 0, auto_start=False, lobby=True)
+        super().__init__(server, "lobby", server.logger, math.inf, 0, auto_start=False, lobby=True)
 
 
 class Server:
@@ -364,7 +369,8 @@ class Server:
         self,
         host: str,
         port: int,
-        logging: bool = False,
+        log_level: int | None = None,
+        print_logo: bool = True,
         exception_when_user_leaves: bool = False,
         on_room_start: Callable = None,
         on_room_left: Callable = None,
@@ -374,11 +380,11 @@ class Server:
         # * Server properties
         self.host: str = host
         self.port: int = port
+        self.logger = get_logger(loglevel=(log_level if log_level else LOGGER_OFF))
         self.rooms: dict[str, Room] = {"lobby": Lobby(self)}
         self.users: dict[int, User] = {}
 
         # * Options
-        self.logging: bool = logging
         self.exception_when_user_leaves: bool = exception_when_user_leaves
 
         # * Event handler callbacks
@@ -394,23 +400,26 @@ class Server:
 
         self.on_room_left: Callable | None = on_room_left
         smart_kwargs(self.on_room_left, room=None, user=None, server=None)
+        
+        if print_logo:
+            path = files("mpge").joinpath("logo.txt")
+            with open(path, encoding="utf-8") as logo:
+                print(logo.read())
 
     async def _main(self):
         async with websockets.serve(self._handler, self.host, self.port):
-            if self.logging:
-                print(f"Server is running on {self.host}:{self.port}")
+            self.logger.info(f"Server is running on {self.host}:{self.port}")
 
             await asyncio.Future()
 
     async def _broadcast(self, message: Message):
-        if self.logging:
-            print(f"Broadcasting: {repr(message)}")
+        self.logger.debug(f"Broadcasting: {repr(message)}")
 
         for user in self.users.values():
             await user._send(message)
 
     async def _handler(self, websocket: ServerConnection):
-        user = User(websocket)
+        user = User(websocket, logger=self.logger)
         self.users[user.user_id] = user
 
         # Join lobby by default
@@ -425,8 +434,7 @@ class Server:
                 # data: dict = json.loads(message_json)
                 # msg_type: str = data.get("type")
 
-                if self.logging:
-                    print(f"Received message: {message_json}")
+                self.logger.debug(f"Received message: {message_json}")
 
                 message: Message = Message.parse(message_json)
                 message_type = message.type
@@ -470,8 +478,7 @@ class Server:
 
             case "room_message":
                 content = message.message
-                if self.logging:
-                    print(f'User {user.user_id} sent: "{content}"')
+                self.logger.debug(f'User {user.user_id} sent: "{content}"')
 
                 if message.room:
                     room = self.rooms[message.room]
@@ -495,10 +502,9 @@ class Server:
         self, question: Question, question_message: Message, user: User
     ):
         async def answer(answer_message: Message):
-            if self.logging:
-                print(
-                    f"Answering question {question.question_id} with {answer_message}"
-                )
+            self.logger.debug(
+                f"Answering question {question.question_id} with {answer_message}"
+            )
 
             await user._send(
                 Answer(question.question_id, answer_message, process=question.process)
@@ -628,7 +634,7 @@ class Server:
                 "ERR_ROOM_EXISTS", f'Room "{room_name}" already exists.'
             )
 
-        self.rooms[room_name] = Room(self, room_name, max_players, **kwargs)
+        self.rooms[room_name] = Room(self, room_name, self.logger, max_players, **kwargs)
 
         await self._join_room(user, room_name)
         await self._rooms_updated()
@@ -664,14 +670,12 @@ class Server:
         return UserListMessage([str(user) for user in self.users.values()])
 
     async def _rooms_updated(self) -> None:
-        if self.logging:
-            print("Rooms updated")
+        self.logger.debug("Rooms updated")
 
         await self._broadcast(self._get_room_list_message())
 
     async def _users_updated(self) -> None:
-        if self.logging:
-            print("Users updated")
+        self.logger.debug("Users updated")
 
         await self._broadcast(self._get_user_list_message())
 
@@ -728,24 +732,3 @@ class Server:
             return True
 
         return response.alive
-
-
-print(
-    rf"""
-<<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>>
-    
-    /\\       /\\  /\\\\\\\       /\\\\     /\\\\\\\\
-    /\ /\\   /\\\  /\\    /\\   /\    /\\   /\\      
-    /\\ /\\ / /\\  /\\    /\\  /\\          /\\      
-    /\\  /\\  /\\  /\\\\\\\    /\\          /\\\\\\  
-    /\\   /\  /\\  /\\         /\\   /\\\\  /\\      
-    /\\       /\\  /\\          /\\    /\   /\\      
-    /\\       /\\  /\\           /\\\\\     /\\\\\\\\
-    
-    {"Python Multiplayer Game Engine":^49}
-    {"Made with ❤  by Márk":^49}
-    
-<<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>><<>>
-    
-"""
-)

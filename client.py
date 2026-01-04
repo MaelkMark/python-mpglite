@@ -1,4 +1,5 @@
 from mpge.client import Client
+import mpge.logger
 
 from tabulate import tabulate
 from time import sleep
@@ -96,7 +97,7 @@ def main():
     client = Client(
         "localhost",
         8767,
-        logging=False,
+        log_level=mpge.logger.INFO,
         on_question=on_question,
         on_message=on_message,
         on_room_joined=on_room_joined,
