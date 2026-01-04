@@ -402,7 +402,7 @@ class Server:
         smart_kwargs(self.on_room_left, room=None, user=None, server=None)
         
         if print_logo:
-            path = files("mpge").joinpath("logo.txt")
+            path = files("mpglite").joinpath("logo.txt")
             with open(path, encoding="utf-8") as logo:
                 print(logo.read())
 

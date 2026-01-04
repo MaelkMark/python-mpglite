@@ -57,7 +57,7 @@ def smart_kwargs(func: Callable | None, **available_data) -> dict:
 
         raise SignatureError(
             f'The provided callback "{func.__name__}" has parameter{"s" if len(missed_params) > 1 else ""} {extra_params}, '
-            f"but MPGE provides only the following optional parameters: {provided_params}."
+            f"but MPGLite provides only the following optional parameters: {provided_params}."
         )
 
     return kwargs
