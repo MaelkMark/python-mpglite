@@ -14,7 +14,7 @@ def room_started(room: Room):
     options = ["K", "P", "O"]
 
     try:
-        for _ in range(1):
+        for _ in range(3):
             result: dict[int, str] = room.ask_everybody({"type": "move"})
             
             if any(not Server.response_alive(response) for response in result.values()):
