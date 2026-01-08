@@ -324,7 +324,9 @@ class Room:
             )
         if len(self.users) < self.min_players:
             return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players.")
-
+        
+        self.logger.debug(f"Starting room '{self.name}'...")
+        
         self.status = "started"
 
         self.server._room_started(self)
@@ -539,6 +541,18 @@ class Server:
                     raise UserLeftError(
                         f"User #{self.user_id} ({self.username}) left the game."
                     )
+
+            case "start_room":
+                room = self.rooms.get(question_message.room)
+                if room is None:
+                    await answer(
+                        ErrorMessage(
+                            "ERR_NO_SUCH_ROOM",
+                            f"There's no room named {question_message.room}.",
+                        )
+                    )
+
+                await answer(room.start())
 
             case "rematch":
                 room = user.current_room

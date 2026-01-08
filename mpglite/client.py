@@ -287,13 +287,10 @@ class Client:
                 return room
         return None
 
+    # Deprecated: use Room.broadcast instead
     def send_room_message(self, message: str):
         """Sends a message to all players in the current room."""
         self._send(RoomMessage(message))
-
-    def send_private_message(self, target_id: int, message: str | dict):
-        """Sends a private message to a specific player."""
-        self._send(PrivateMessage(target_id, message))
 
     def create_room(
         self, room_name: str, max_players: int = math.inf, min_players: int = 2
@@ -434,11 +431,11 @@ class Room:
         """Send a message to everyone in this room."""
         self.__client._send(RoomMessage(message, self.name, excluded_users))
 
-    def start(self):
+    def start(self) -> Message:
         if len(self.players) < self.min_players:
             return False
 
-        raise NotImplementedError("Client Room.start() not implemented")
+        return self.__client._ask(StartRoomMessage(self.name))
 
     @staticmethod
     def parse(client: Client, room_dict: str | dict, logger):
