@@ -58,6 +58,8 @@ def on_room_joined(room, client):
 
 
 def on_room_started(room):
+    global status
+    status = "game"
     print(f"The game begins!")
 
 
@@ -249,13 +251,25 @@ def main():
                     status = "room_list"
             case "room_create":
                 name = input("Room name: ")
-                result = client.create_room(name, max_players=2)
+                result = client.create_room(name, max_players=6)
                 if result.ok:
                     status = "room_joined"
                 else:
                     print(result.error_message)
             case "room_joined":
+                if len(client.room.players) >= client.room.min_players:
+                    if confirm("Do you want to start the game?"):
+                        print(client.room.start())
+                    else:
+                        status = "wait_for_room_start"
+            
+            case "wait_for_room_start":
+                if keyboard.is_pressed("s"):
+                    status = "room_joined"
+
+            case "game":
                 pass
+            
             case _:
                 print("Error: invalid status")
 

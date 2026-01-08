@@ -140,7 +140,7 @@ if __name__ == "__main__":
     server = Server(
         "0.0.0.0",
         8767,
-        log_level=mpglite.logger.INFO,
+        log_level=mpglite.logger.DEBUG,
         on_room_start=room_started,
         on_room_left=room_left,
     )
