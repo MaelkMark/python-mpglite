@@ -91,7 +91,7 @@ def roll_to_string(roll: int) -> str:
 
 
 def on_question(question):
-    print("Question:", question)
+    # print("Question:", question)
     match question["type"]:
         case "believe":
             print(
@@ -163,8 +163,9 @@ def on_question(question):
                         break
                     else:
                         print("You should input only a 2-digit number!")
-
-            return {"roll": roll, "announced_roll": announced_roll}
+            response = {"roll": roll, "announced_roll": announced_roll}
+            # print("Response:", response)
+            return response
 
 
 def on_message(message, client):
@@ -175,6 +176,12 @@ def on_message(message, client):
                 print("You lost a life!")
             else:
                 print(f"{message["lost"]} lost a life!")
+                
+        case "player_died":
+            if message["username"] == client.username:
+                print("You died!")
+            else:
+                print(f"{message["username"]} died!")
 
 
 
