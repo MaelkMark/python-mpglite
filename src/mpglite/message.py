@@ -184,6 +184,18 @@ class RoomJoinedMessage(Message):
 class RoomLeftMessage(Message):
     TYPE = "room_left"
 
+    def __init__(self, room: str, **properties):
+        super().__init__(
+            self.TYPE,
+            "sent to a client when they leave a room",
+            room=room,
+            **properties,
+        )
+
+
+class UserLeftMessage(Message):
+    TYPE = "user_left"
+
     def __init__(self, user_id: int, room: str, **properties):
         super().__init__(
             self.TYPE,

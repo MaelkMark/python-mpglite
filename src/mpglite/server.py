@@ -138,7 +138,7 @@ class Room:
     ):
         self.server = server
         self.logger = logger
-        
+
         self.name = name
         self.users: dict[int, User] = {}
         self.wants_rematch: list[int] = []
@@ -204,28 +204,28 @@ class Room:
         if len(self.users) >= self.max_players:
             return ErrorMessage(
                 "ERR_ROOM_FULL",
-                f"Room \"{self.name}\" is full. Cannot add user #{user.user_id}.",
+                f'Room "{self.name}" is full. Cannot add user #{user.user_id}.',
             )
 
         if self.status != "open":
             return ErrorMessage(
                 "ERR_ROOM_NOT_OPEN",
-                f"Room \"{self.name}\" is not open. Cannot add user #{user.user_id}.",
+                f'Room "{self.name}" is not open. Cannot add user #{user.user_id}.',
             )
 
-        self.logger.debug(f"Adding user #{user.user_id} to room \"{self.name}\"")
+        self.logger.debug(f'Adding user #{user.user_id} to room "{self.name}"')
         self.users[user.user_id] = user
 
         await self.server.users[user.user_id]._send(RoomJoinedMessage(self))
 
         if self.auto_start and len(self.users) == self.max_players:
-            self.logger.debug(f"Starting room \"{self.name}\" automatically...")
+            self.logger.debug(f'Starting room "{self.name}" automatically...')
             self.start()
 
         return OKMessage()
 
     async def _remove_user(self, user: User):
-        self.logger.debug(f"Removing user #{user.user_id} from room \"{self.name}\"")
+        self.logger.debug(f'Removing user #{user.user_id} from room "{self.name}"')
 
         user_id = user.user_id
         if user_id in self.users:
@@ -240,7 +240,7 @@ class Room:
                 self.server.on_room_left, room=self, user=user, server=self.server
             )
 
-            await self._broadcast(RoomLeftMessage(user_id, self.name))
+            await self._broadcast(UserLeftMessage(user_id, self.name))
             if len(self.users) == 0 or delete:
                 self.server._delete_room(self.name)
 
@@ -248,14 +248,14 @@ class Room:
         if user.user_id not in self.users:
             return ErrorMessage(
                 "ERR_REMATCH_USER_NOT_IN_ROOM",
-                f"User #{user.user_id} is not in room \"{self.name}\".",
+                f'User #{user.user_id} is not in room "{self.name}".',
             )
 
         if user.user_id not in self.wants_rematch:
             self.wants_rematch.append(user.user_id)
 
         self.logger.debug(
-            f"Rematch requested by user #{user.user_id} in room \"{self.name}\" ({len(self.wants_rematch)}/{len(self.users)})"
+            f'Rematch requested by user #{user.user_id} in room "{self.name}" ({len(self.wants_rematch)}/{len(self.users)})'
         )
 
         if len(self.wants_rematch) == len(self.users):
@@ -283,7 +283,7 @@ class Room:
         """
         Asks every player a question and returns a dict of {user_id: Message}.
         """
-        self.logger.debug(f"Asking everybody in room \"{self.name}\"", message)
+        self.logger.debug(f'Asking everybody in room "{self.name}"', message)
 
         if not self.users:
             return {}
@@ -299,7 +299,7 @@ class Room:
         try:
             return future.result(timeout=timeout)
         except TimeoutError:
-            self.logger.warning(f"Room \"{self.name}\": ask_everybody timed out!")
+            self.logger.warning(f'Room "{self.name}": ask_everybody timed out!')
             return {}
 
     def ask_player(
@@ -323,9 +323,9 @@ class Room:
             )
         if len(self.users) < self.min_players:
             return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players.")
-        
-        self.logger.debug(f"Starting room \"{self.name}\"...")
-        
+
+        self.logger.debug(f'Starting room "{self.name}"...')
+
         self.status = "started"
 
         self.server._room_started(self)
@@ -353,7 +353,7 @@ class Room:
         return future.result()
 
     def rematch(self) -> Message:
-        self.logger.debug(f"Rematching room \"{self.name}\"...")
+        self.logger.debug(f'Rematching room "{self.name}"...')
         return self.start()
 
     def delete(self) -> Message:
@@ -362,7 +362,9 @@ class Room:
 
 class Lobby(Room):
     def __init__(self, server):
-        super().__init__(server, "lobby", server.logger, math.inf, 0, auto_start=False, lobby=True)
+        super().__init__(
+            server, "lobby", server.logger, math.inf, 0, auto_start=False, lobby=True
+        )
 
 
 class Server:
@@ -403,7 +405,7 @@ class Server:
 
         self.on_room_left: Callable | None = on_room_left
         smart_kwargs(self.on_room_left, room=None, user=None, server=None)
-        
+
         if print_logo:
             path = files("mpglite").joinpath("logo.txt")
             with open(path, encoding="utf-8") as logo:
@@ -482,7 +484,7 @@ class Server:
 
             case "room_message":
                 content = message.message
-                self.logger.debug(f"User {user.user_id} sent: \"{content}\"")
+                self.logger.debug(f'User {user.user_id} sent: "{content}"')
 
                 if message.room:
                     room = self.rooms[message.room]
@@ -641,7 +643,7 @@ class Server:
 
         await self._users_updated()
         await self._rooms_updated()
-        return OKMessage()
+        return RoomLeftMessage(room.name)
 
     async def _create_room(
         self, user: User, room_name: str, max_players: int, **kwargs
@@ -649,10 +651,12 @@ class Server:
 
         if room_name in self.rooms.keys():
             return ErrorMessage(
-                "ERR_ROOM_EXISTS", f"Room \"{room_name}\" already exists."
+                "ERR_ROOM_EXISTS", f'Room "{room_name}" already exists.'
             )
 
-        self.rooms[room_name] = Room(self, room_name, self.logger, max_players, **kwargs)
+        self.rooms[room_name] = Room(
+            self, room_name, self.logger, max_players, **kwargs
+        )
 
         await self._join_room(user, room_name)
         await self._rooms_updated()
@@ -740,7 +744,7 @@ class Server:
             return self._main()
         except RuntimeError:
             asyncio.run(self._main())
-            
+
     def stop(self):
         """Stop the server."""
         if hasattr(self, "loop"):

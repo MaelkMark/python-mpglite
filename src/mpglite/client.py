@@ -32,23 +32,23 @@ class Client:
         on_user_list: Callable = None,
         on_question: Callable = None,
     ):
-        #* WebSocket properties
+        # * WebSocket properties
         self.uri: str = f"ws://{host}:{port}"
         self.ws: ClientConnection = None
         self._running: bool = False
-        
-        #* User properties
+
+        # * User properties
         self.user_id: int | None = None
         self.username: str | None = None
         self.room: Room | None = None
-        
+
         self.logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
         self._users: list[User] = []
         self._users_last: list[Room] = []
         self._rooms: list[Room] = []
         self._rooms_last: list[str] = []
 
-        #* Event handler callbacks
+        # * Event handler callbacks
         # When the client receives a ServerMessage message from the server
         self.on_message: Callable = on_message
         smart_kwargs(self.on_message, message=None, client=None)
@@ -113,7 +113,9 @@ class Client:
 
     def _run_in_thread(self, func, **kwargs):
         if func:
-            threading.Thread(target=smart_call, args=(func,), kwargs=kwargs, daemon=True).start()
+            threading.Thread(
+                target=smart_call, args=(func,), kwargs=kwargs, daemon=True
+            ).start()
 
     def _listen(self):
         while self._running:
@@ -150,7 +152,9 @@ class Client:
                     Question.answer_question(question_id, payload)
             except ConnectionClosed:
                 if self._running:
-                    raise ConnectionLostError("The connection was dropped by the server.")
+                    raise ConnectionLostError(
+                        "The connection was dropped by the server."
+                    )
                 break
             except Exception as e:
                 self.logger.critical(f"Listener error: {e}")
@@ -197,9 +201,14 @@ class Client:
 
             case "room_joined":
                 room = self._load_room(message.room)
-                self.logger.debug(f"Joined to room \"{room.name}\"")
-                self.room = room
-                self._run_in_thread(self.on_room_joined, room=room, client=self)
+
+                if self.room != room:
+                    self.logger.debug(f'Joined to room "{room.name}"')
+                    self.room = room
+                    self._run_in_thread(self.on_room_joined, room=room, client=self)
+
+            case "room_left":
+                self.room = None
 
             case "room_started":
                 room = self.get_room_by_name(message.room)
@@ -210,15 +219,21 @@ class Client:
                 self._run_in_thread(self.on_room_ended, room=room, client=self)
 
             case "room_deleted":
-                self._run_in_thread(self.on_room_deleted, room_name=message.room, client=self)
+                self._run_in_thread(
+                    self.on_room_deleted, room_name=message.room, client=self
+                )
 
-            case "room_left":
+            case "user_left":
                 room = self.get_room_by_name(message.room)
                 user = self.get_user_by_id(message.user_id)
-                self._run_in_thread(self.on_room_left, user=user, room=room, client=self)
+                self._run_in_thread(
+                    self.on_room_left, user=user, room=room, client=self
+                )
 
             case "server_message":
-                self._run_in_thread(self.on_message, message=message.message, client=self)
+                self._run_in_thread(
+                    self.on_message, message=message.message, client=self
+                )
 
     def _handle_question(self, question: Message):
         message = question.parsed_message
@@ -244,9 +259,9 @@ class Client:
         if not room:
             room = Room.parse(self, room_data, self.logger)
             self._rooms.append(room)
-            
+
         return room
-    
+
     def _send(self, message: Message):
         self.ws.send(str(message))
 
@@ -307,7 +322,7 @@ class Client:
             CreateRoomMessage(
                 room=room_name, min_players=min_players, max_players=max_players
             ),
-            process=True
+            process=True,
         )
 
     def join_room(self, room_name: str) -> Message:
@@ -316,7 +331,7 @@ class Client:
 
     def leave_room(self) -> Message:
         """Leaves current room"""
-        return self._ask(LeaveRoomMessage())
+        return self._ask(LeaveRoomMessage(), process=True)
 
     def rematch(self) -> Message:
         if self.room is None:
@@ -358,8 +373,10 @@ class Client:
         thread = threading.Thread(target=self._listen, daemon=True)
         thread.start()
 
-        self._ask(Message("init_request"), process=True)  # Wait until the response arrives
-        
+        self._ask(
+            Message("init_request"), process=True
+        )  # Wait until the response arrives
+
         return True
 
     def disconnect(self):
@@ -368,8 +385,11 @@ class Client:
         if self.ws:
             self.ws.close()
 
+
 class User:
-    def __init__(self, client: Client, user_id: int, username: str, logger, temp: bool = False):
+    def __init__(
+        self, client: Client, user_id: int, username: str, logger, temp: bool = False
+    ):
         self.__client = client
         self.user_id = user_id
         self.username = username
@@ -469,5 +489,5 @@ class Room:
             min_players=room_dict["min_players"],
             auto_start=room_dict["auto_start"],
             lobby=room_dict["lobby"],
-            logger=logger
+            logger=logger,
         )
