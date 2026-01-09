@@ -3,7 +3,7 @@ from __future__ import annotations
 from .utils import *
 from .message import *
 from .exceptions import *
-from .logger import get_logger, OFF as LOGGER_OFF
+from .logger import get_logger, Loglevel
 
 import threading
 import websockets
@@ -371,7 +371,7 @@ class Server:
         self,
         host: str,
         port: int,
-        log_level: int | None = None,
+        loglevel: int | None = None,
         print_logo: bool = True,
         exception_when_user_leaves: bool = False,
         on_room_start: Callable = None,
@@ -382,9 +382,11 @@ class Server:
         # * Server properties
         self.host: str = host
         self.port: int = port
-        self.logger = get_logger(loglevel=(log_level if log_level else LOGGER_OFF))
+        self.logger = get_logger(loglevel=(loglevel if loglevel else Loglevel.OFF))
         self.rooms: dict[str, Room] = {"lobby": Lobby(self)}
         self.users: dict[int, User] = {}
+        self.ws_server = None
+        self.stop_event = asyncio.Event()
 
         # * Options
         self.exception_when_user_leaves: bool = exception_when_user_leaves
@@ -409,10 +411,11 @@ class Server:
                 print(logo.read())
 
     async def _main(self):
-        async with websockets.serve(self._handler, self.host, self.port):
-            self.logger.info(f"Server is running on {self.host}:{self.port}")
-
-            await asyncio.Future()
+        async with websockets.serve(self._handler, self.host, self.port) as ws_server:
+            self.logger.info(f"Server started on ws://{self.host}:{self.port}")
+            self.ws_server = ws_server
+            await self.stop_event.wait()
+            self.logger.info("Server shutting down...")
 
     async def _broadcast(self, message: Message):
         self.logger.debug(f"Broadcasting: {repr(message)}")
@@ -731,7 +734,19 @@ class Server:
 
     def start(self):
         """Starts the websocket server"""
-        asyncio.run(self._main())
+        try:
+            asyncio.get_running_loop()
+            return self._main()
+        except RuntimeError:
+            asyncio.run(self._main())
+            
+    def stop(self):
+        """Stop the server."""
+        if hasattr(self, "loop"):
+            self.loop.call_soon_threadsafe(self.stop_event.set)
+        else:
+            # If running in the same thread (like in a test)
+            self.stop_event.set()
 
     @staticmethod
     def response_ok(response: Any):

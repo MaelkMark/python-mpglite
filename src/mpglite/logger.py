@@ -1,18 +1,19 @@
 from .utils import open_error
 
-import math
 import logging
 import datetime
+from enum import Enum
 
-CRITICAL = 50
-FATAL = CRITICAL
-ERROR = 40
-WARNING = 30
-WARN = WARNING
-INFO = 20
-DEBUG = 10
-NOTSET = 0
-OFF = 10000
+class Loglevel(Enum):
+    CRITICAL = 50
+    FATAL = CRITICAL
+    ERROR = 40
+    WARNING = 30
+    WARN = WARNING
+    INFO = 20
+    DEBUG = 10
+    NOTSET = 0
+    OFF = 10000
 
 class ColoredFormatter(logging.Formatter):
     grey = "\x1b[38;20m"
@@ -37,7 +38,9 @@ class ColoredFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, datefmt="%H:%M:%S")
         return formatter.format(record)
 
-def get_logger(loglevel: int = logging.DEBUG, logfile_path: str | None = None) -> logging.Logger:    
+def get_logger(loglevel: Loglevel = Loglevel.INFO, logfile_path: str | None = None) -> logging.Logger:   
+    loglevel = loglevel.value
+     
     logger: logging.Logger = logging.getLogger(__name__)
     logger.propagate = False
     logger.setLevel(loglevel)

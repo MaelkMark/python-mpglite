@@ -1,7 +1,7 @@
 from .utils import *
 from .message import *
 from .exceptions import *
-from .logger import get_logger, OFF as LOGGER_OFF
+from .logger import get_logger, Loglevel
 
 import math
 import json
@@ -21,7 +21,7 @@ class Client:
         self,
         host: str,
         port: int,
-        log_level: int | None = None,
+        loglevel: int | None = None,
         on_message: Callable = None,
         on_room_joined: Callable = None,
         on_room_started: Callable = None,
@@ -42,7 +42,7 @@ class Client:
         self.username: str | None = None
         self.room: Room | None = None
         
-        self.logger = get_logger(loglevel=log_level if log_level else LOGGER_OFF)
+        self.logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
         self._users: list[User] = []
         self._users_last: list[Room] = []
         self._rooms: list[Room] = []
@@ -326,7 +326,7 @@ class Client:
     def set_username(self, username: str) -> Message:
         return self._ask(Message("set_username", username=username), process=True)
 
-    def connect(self):
+    def connect(self) -> bool:
         """Connects to the server and starts the listener thread"""
 
         try:
@@ -350,7 +350,9 @@ class Client:
         thread = threading.Thread(target=self._listen, daemon=True)
         thread.start()
 
-        response = self._ask(Message("init_request"), process=True)
+        self._ask(Message("init_request"), process=True)  # Wait until the response arrives
+        
+        return True
 
 
 class User:

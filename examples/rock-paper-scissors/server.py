@@ -1,6 +1,6 @@
 from mpglite.server import Server, Room, User
 from mpglite.exceptions import UserLeftError
-import mpglite.logger
+from mpglite.logger import Loglevel
 
 def room_started(room: Room):
     print(f'ROOM "{room.name}" STARTED!')
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     server = Server(
         "0.0.0.0",
         8767,
-        log_level=mpglite.logger.INFO,
+        loglevel=Loglevel.INFO,
         on_room_start=room_started,
         on_room_left=room_left,
     )

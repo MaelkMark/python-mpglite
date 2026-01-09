@@ -1,5 +1,5 @@
 from mpglite.client import Client
-import mpglite.logger
+from mpglite.logger import Loglevel
 
 from tabulate import tabulate
 from time import sleep
@@ -96,7 +96,7 @@ def main():
     client = Client(
         "localhost",
         8767,
-        log_level=mpglite.logger.INFO,
+        loglevel=Loglevel.INFO,
         on_question=on_question,
         on_message=on_message,
         on_room_joined=on_room_joined,
