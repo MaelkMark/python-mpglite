@@ -2,6 +2,9 @@
     <h1>MPGLite</h1>
     <p>A simple Python multiplayer game engine</p>
     <p>v0.1.0 BETA</p>
+    <a href="https://github.com/MaelkMark/python-mpglite/actions/workflows/tests.yml">
+        <img src="https://github.com/MaelkMark/python-mpglite/actions/workflows/tests.yml/badge.svg" alt="Tests Status">
+    </a>
 </div>
 
 MPGLite is a lightweight Python multiplayer game engine built on the [websockets](https://github.com/python-websockets/websockets) library. Its goal is to enable Python beginners and developers unfamiliar with async/await or asyncio to easily and quickly create simple multiplayer games. Have you ever created a simple game and wondered if you could make it multiplayer? Then this might be the right library for you. MPGLite is designed so you have to write as few additional code as possible, handles repetitive and complex tasks, taking the weight off your shoulders. However, it is not for handling robust multiplayer games or thousands of players.
