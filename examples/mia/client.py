@@ -42,7 +42,7 @@ possible_rolls = [
 
 def decision(question, options):
     while True:
-        choice = input(f"{question} ({"/".join(options)}) ").strip().upper()
+        choice = input(f"{question} ({'/'.join(options)}) ").strip().upper()
         if choice in [option.upper() for option in options]:
             return choice
         else:
@@ -95,7 +95,7 @@ def on_question(question):
     match question["type"]:
         case "believe":
             print(
-                f"The previous player rolled {roll_to_string(question["previous_roll"])}"
+                f"The previous player rolled {roll_to_string(question['previous_roll'])}"
             )
             return confirm("Do you believe?")
 
@@ -175,13 +175,13 @@ def on_message(message, client):
             if message["lost"] == client.username:
                 print("You lost a life!")
             else:
-                print(f"{message["lost"]} lost a life!")
+                print(f"{message['lost']} lost a life!")
                 
         case "player_died":
             if message["username"] == client.username:
                 print("You died!")
             else:
-                print(f"{message["username"]} died!")
+                print(f"{message['username']} died!")
 
 
 

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mpglite"
+version = "0.1.0"
+authors = [{ name = "Márk Magyar", email = "magyar.mark@ma-elk.hu" }]
+description = "A simple multiplayer game engine for beginners"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["websockets>=13.0"]
+license = "MIT"
+
+[project.urls]
+"Homepage" = "https://github.com/MaelkMark/python-mpglite"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mpglite"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

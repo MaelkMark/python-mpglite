@@ -204,13 +204,13 @@ class Room:
         if len(self.users) >= self.max_players:
             return ErrorMessage(
                 "ERR_ROOM_FULL",
-                f'Room "{self.name}" is full. Cannot add user #{user.user_id}.',
+                f"Room \"{self.name}\" is full. Cannot add user #{user.user_id}.",
             )
 
         if self.status != "open":
             return ErrorMessage(
                 "ERR_ROOM_NOT_OPEN",
-                f'Room "{self.name}" is not open. Cannot add user #{user.user_id}.',
+                f"Room \"{self.name}\" is not open. Cannot add user #{user.user_id}.",
             )
 
         self.users[user.user_id] = user
@@ -220,13 +220,13 @@ class Room:
         )
 
         if self.auto_start and len(self.users) == self.max_players:
-            self.logger.debug(f'Starting room "{self.name}" automatically...')
+            self.logger.debug(f"Starting room \"{self.name}\" automatically...")
             self.start()
 
         return OKMessage()
 
     async def _remove_user(self, user: User):
-        self.logger.debug(f"Removing user #{user.user_id} from room '{self.name}'")
+        self.logger.debug(f"Removing user #{user.user_id} from room \"{self.name}\"")
 
         user_id = user.user_id
         if user_id in self.users:
@@ -249,14 +249,14 @@ class Room:
         if user.user_id not in self.users:
             return ErrorMessage(
                 "ERR_REMATCH_USER_NOT_IN_ROOM",
-                f'User #{user.user_id} is not in room "{self.name}".',
+                f"User #{user.user_id} is not in room \"{self.name}\".",
             )
 
         if user.user_id not in self.wants_rematch:
             self.wants_rematch.append(user.user_id)
 
         self.logger.debug(
-            f"Rematch requested by user #{user.user_id} in room '{self.name}' ({len(self.wants_rematch)}/{len(self.users)})"
+            f"Rematch requested by user #{user.user_id} in room \"{self.name}\" ({len(self.wants_rematch)}/{len(self.users)})"
         )
 
         if len(self.wants_rematch) == len(self.users):
@@ -284,7 +284,7 @@ class Room:
         """
         Asks every player a question and returns a dict of {user_id: Message}.
         """
-        self.logger.debug(f"Asking everybody in room '{self.name}'", message)
+        self.logger.debug(f"Asking everybody in room \"{self.name}\"", message)
 
         if not self.users:
             return {}
@@ -300,7 +300,7 @@ class Room:
         try:
             return future.result(timeout=timeout)
         except TimeoutError:
-            self.logger.warning(f'Room "{self.name}": ask_everybody timed out!')
+            self.logger.warning(f"Room \"{self.name}\": ask_everybody timed out!")
             return {}
 
     def ask_player(
@@ -325,7 +325,7 @@ class Room:
         if len(self.users) < self.min_players:
             return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players.")
         
-        self.logger.debug(f"Starting room '{self.name}'...")
+        self.logger.debug(f"Starting room \"{self.name}\"...")
         
         self.status = "started"
 
@@ -354,7 +354,7 @@ class Room:
         return future.result()
 
     def rematch(self) -> Message:
-        self.logger.debug(f"Rematching room '{self.name}'...")
+        self.logger.debug(f"Rematching room \"{self.name}\"...")
         return self.start()
 
     def delete(self) -> Message:
@@ -480,7 +480,7 @@ class Server:
 
             case "room_message":
                 content = message.message
-                self.logger.debug(f'User {user.user_id} sent: "{content}"')
+                self.logger.debug(f"User {user.user_id} sent: \"{content}\"")
 
                 if message.room:
                     room = self.rooms[message.room]
@@ -645,7 +645,7 @@ class Server:
 
         if room_name in self.rooms.keys():
             return ErrorMessage(
-                "ERR_ROOM_EXISTS", f'Room "{room_name}" already exists.'
+                "ERR_ROOM_EXISTS", f"Room \"{room_name}\" already exists."
             )
 
         self.rooms[room_name] = Room(self, room_name, self.logger, max_players, **kwargs)

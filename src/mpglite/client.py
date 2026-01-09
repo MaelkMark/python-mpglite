@@ -364,7 +364,7 @@ class User:
 
     def __str__(self):
         return (
-            f"User#{self.user_id}({self.username}{" (dead)" if not self.alive else ""})"
+            f"User#{self.user_id}({self.username}{' (dead)' if not self.alive else ''})"
         )
 
     def send(self, message: str | dict):

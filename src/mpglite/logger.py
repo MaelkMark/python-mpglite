@@ -62,7 +62,8 @@ def get_logger(loglevel: int = logging.DEBUG, logfile_path: str | None = None) -
         with open_error(logfile_path, "a") as (file, e):
             if not e:
                 width = 80
-                file.write(f"\n{'='*width}\n{f'Server started ({datetime.now().strftime("%Y.%m.%d. %H:%M:%S")})':^80}\n{'='*width}\n")
+                now_str = datetime.now().strftime("%Y.%m.%d. %H:%M:%S")
+                file.write(f"\n{'='*width}\n{f'Server started ({now_str})':^{width}}\n{'='*width}\n")
             else:
                 logger.critical(f"An unhandled exception occurred when opening the {logfile_path} file: {e}")
 
