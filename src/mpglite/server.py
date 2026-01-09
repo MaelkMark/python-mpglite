@@ -200,7 +200,7 @@ class Room:
 
         return self._broadcast_sync(ServerMessage(message), excluded_users)
 
-    def _add_user(self, user: User) -> Message:
+    async def _add_user(self, user: User) -> Message:
         if len(self.users) >= self.max_players:
             return ErrorMessage(
                 "ERR_ROOM_FULL",
@@ -213,11 +213,10 @@ class Room:
                 f"Room \"{self.name}\" is not open. Cannot add user #{user.user_id}.",
             )
 
+        self.logger.debug(f"Adding user #{user.user_id} to room \"{self.name}\"")
         self.users[user.user_id] = user
 
-        asyncio.create_task(
-            self.server.users[user.user_id]._send(RoomJoinedMessage(self.name))
-        )
+        await self.server.users[user.user_id]._send(RoomJoinedMessage(self))
 
         if self.auto_start and len(self.users) == self.max_players:
             self.logger.debug(f"Starting room \"{self.name}\" automatically...")
@@ -371,7 +370,7 @@ class Server:
         self,
         host: str,
         port: int,
-        loglevel: int | None = None,
+        loglevel: Loglevel = Loglevel.OFF,
         print_logo: bool = True,
         exception_when_user_leaves: bool = False,
         on_room_start: Callable = None,
@@ -429,7 +428,7 @@ class Server:
 
         # Join lobby by default
         room = self.rooms["lobby"]
-        room._add_user(user)
+        await room._add_user(user)
         user.current_room = room
         await self._rooms_updated()
         await self._users_updated()
@@ -520,7 +519,7 @@ class Server:
                 await answer(
                     MessageBundle(
                         [
-                            InitMessage(user.user_id, len(self.users)),
+                            InitMessage(user.user_id, user.username),
                             self._get_user_list_message(),
                             self._get_room_list_message(),
                         ]
@@ -618,10 +617,12 @@ class Server:
         if user.current_room:
             await user.current_room._remove_user(user)
 
-        result = room._add_user(user)
-        user.current_room = room
+        result = await room._add_user(user)
+        if result.ok:
+            user.current_room = room
+            result = RoomJoinedMessage(room)
+            await self._rooms_updated()
 
-        await self._rooms_updated()
         return result
 
     async def _leave_room(self, user: User, room_name: str) -> Message:

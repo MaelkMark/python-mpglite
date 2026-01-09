@@ -144,14 +144,14 @@ class Client:
                 )
 
                 for msg in messages:
-                    self.logger.debug(f"Message received: {repr(msg)}")
-
                     self._handle_message(msg)
 
                 if question_id:
                     Question.answer_question(question_id, payload)
             except ConnectionClosed:
-                raise ConnectionLostError("The connection was dropped by the server.")
+                if self._running:
+                    raise ConnectionLostError("The connection was dropped by the server.")
+                break
             except Exception as e:
                 self.logger.critical(f"Listener error: {e}")
                 self.logger.critical(traceback.format_exc())
@@ -162,6 +162,7 @@ class Client:
         match message.type:
             case "init":
                 self.user_id = message.user_id
+                self.username = message.username
 
             case "username":
                 self.username = message.username
@@ -169,13 +170,7 @@ class Client:
             case "room_list":
                 current_room_names = []
                 for room_data in message.rooms:
-                    if isinstance(room_data, str):
-                        room_data = json.loads(room_data)
-
-                    room = self.get_room_by_name(room_data["name"])
-                    if not room:
-                        room = Room.parse(self, room_data, self.logger)
-                        self._rooms.append(room)
+                    room = self._load_room(room_data)
 
                     room.update(room_data)
                     current_room_names.append(room.name)
@@ -201,7 +196,8 @@ class Client:
                 self._run_in_thread(self.on_user_list, users=self.users, client=self)
 
             case "room_joined":
-                room = self.get_room_by_name(message.room)
+                room = self._load_room(message.room)
+                self.logger.debug(f"Joined to room \"{room.name}\"")
                 self.room = room
                 self._run_in_thread(self.on_room_joined, room=room, client=self)
 
@@ -240,6 +236,17 @@ class Client:
                 Answer(question.question_id, answer_message, process=question.process)
             )
 
+    def _load_room(self, room_data: str):
+        if isinstance(room_data, str):
+            room_data = json.loads(room_data)
+
+        room = self.get_room_by_name(room_data["name"])
+        if not room:
+            room = Room.parse(self, room_data, self.logger)
+            self._rooms.append(room)
+            
+        return room
+    
     def _send(self, message: Message):
         self.ws.send(str(message))
 
@@ -299,7 +306,8 @@ class Client:
         return self._ask(
             CreateRoomMessage(
                 room=room_name, min_players=min_players, max_players=max_players
-            )
+            ),
+            process=True
         )
 
     def join_room(self, room_name: str) -> Message:
@@ -354,6 +362,11 @@ class Client:
         
         return True
 
+    def disconnect(self):
+        """Disconnects from the server."""
+        self._running = False
+        if self.ws:
+            self.ws.close()
 
 class User:
     def __init__(self, client: Client, user_id: int, username: str, logger, temp: bool = False):

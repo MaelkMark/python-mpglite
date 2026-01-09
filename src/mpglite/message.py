@@ -44,6 +44,10 @@ class Message:
     def ok(self):
         return not isinstance(self, ErrorMessage)
 
+    @property
+    def error(self):
+        return not self.ok
+
     @staticmethod
     def parse(message: str | dict):
         if isinstance(message, Message):
@@ -99,12 +103,12 @@ class ClientMessage(Message):
 class InitMessage(Message):
     TYPE = "init"
 
-    def __init__(self, user_id: int, online_users: int, **properties):
+    def __init__(self, user_id: int, username: str, **properties):
         super().__init__(
             self.TYPE,
-            "initial connection message from server containing user ID",
+            "Initial connection message from server to the connected client",
             user_id=user_id,
-            online_users=online_users,
+            username=username,
             **properties,
         )
 
@@ -168,11 +172,11 @@ class RematchMessage(Message):
 class RoomJoinedMessage(Message):
     TYPE = "room_joined"
 
-    def __init__(self, room: str, **properties):
+    def __init__(self, room, **properties):
         super().__init__(
             self.TYPE,
             "sent to a client when they join a room",
-            room=room,
+            room=str(room),
             **properties,
         )
 
