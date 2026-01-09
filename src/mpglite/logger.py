@@ -23,7 +23,7 @@ class ColoredFormatter(logging.Formatter):
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
     bold = "\033[1m"
-    format = f"%(asctime)s.%(msecs)03d %(levelname)s: {bold}%(message)s{reset} (%(filename)s:%(lineno)d)"
+    format = f"%(asctime)s.%(msecs)03d %(levelname)s: {bold}%(message)s{reset} (%(filename)s:%(lineno)d)\n"
 
     FORMATS = {
         logging.DEBUG: grey + format + reset,
