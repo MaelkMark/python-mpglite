@@ -1,3 +1,5 @@
 ✔ Better Question ids including the user_id/server @done(26-01-04 17:15)
 ☐ Make users_changed and rooms_chaneged consistent
 ☐ Consistent async/sync in server.py
+✔ Add client Room.join() and Room.leave() @done(26-01-09 17:47)
+☐ Rename "room" to "room_name" in message.py

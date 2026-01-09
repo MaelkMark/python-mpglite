@@ -471,6 +471,12 @@ class Room:
             return False
 
         return self.__client._ask(StartRoomMessage(self.name))
+    
+    def join(self) -> Message:
+        return self.__client.join_room(self.name)
+    
+    def leave(self) -> Message:
+        return self.__client.leave_room()
 
     @staticmethod
     def parse(client: Client, room_dict: str | dict, logger):
