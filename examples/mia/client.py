@@ -192,7 +192,7 @@ def main():
     client = Client(
         "localhost",
         8767,
-        loglevel=Loglevel.INFO,
+        loglevel=Loglevel.DEBUG,
         on_question=on_question,
         on_message=on_message,
         on_room_joined=on_room_joined,
@@ -259,16 +259,20 @@ def main():
             case "room_create":
                 name = input("Room name: ")
                 result = client.create_room(name, max_players=6)
+                print("After room created")
+                print(result)
+                print(client.room)
                 if result.ok:
                     status = "room_joined"
                 else:
                     print(result.error_message)
             case "room_joined":
-                if len(client.room.players) >= client.room.min_players:
-                    if confirm("Do you want to start the game?"):
-                        print(client.room.start())
-                    else:
-                        status = "wait_for_room_start"
+                pass
+                # if len(client.room.players) >= client.room.min_players:
+                #     if confirm("Do you want to start the game?"):
+                #         print(client.room.start())
+                #     else:
+                #         status = "wait_for_room_start"
             
             case "wait_for_room_start":
                 if keyboard.is_pressed("s"):
