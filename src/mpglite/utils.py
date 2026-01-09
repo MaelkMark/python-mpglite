@@ -37,16 +37,25 @@ def smart_kwargs(func: Callable | None, **available_data) -> dict:
         return {}
 
     sig = inspect.signature(func)
+    has_kwargs = any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values())
 
+    if has_kwargs:
+        # If the function accepts **kwargs, give it everything!
+        return available_data
+
+    # Otherwise, filter only what the function specifically asked for
     kwargs = {
         name: value for name, value in available_data.items() if name in sig.parameters
     }
 
-    # Check if the user missed any mandatory parameters
+    # Check for missing mandatory parameters
     missed_params = [
         name
         for name, param in sig.parameters.items()
-        if param.default is param.empty and name not in kwargs
+        if param.default is param.empty
+        and name not in kwargs
+        and param.kind != param.VAR_POSITIONAL  # Ignore *args
+        and param.kind != param.VAR_KEYWORD  # Ignore **kwargs
     ]
 
     if missed_params:
@@ -55,8 +64,9 @@ def smart_kwargs(func: Callable | None, **available_data) -> dict:
             list(available_data.keys()), surround='"'
         )
 
+        callback_name = f'"{func.__name__}" ' if hasattr(func, "__name__") else ""
         raise SignatureError(
-            f'The provided callback "{func.__name__}" has parameter{"s" if len(missed_params) > 1 else ""} {extra_params}, '
+            f"The provided callback {callback_name}has parameter{'s' if len(missed_params) > 1 else ''} {extra_params}, "
             f"but MPGLite provides only the following optional parameters: {provided_params}."
         )
 
