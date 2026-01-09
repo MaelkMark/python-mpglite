@@ -1,3 +1,4 @@
+from typing import Any
 from .utils import *
 
 import json
@@ -79,7 +80,7 @@ class OKMessage(Message):
 class ServerMessage(Message):
     TYPE = "server_message"
 
-    def __init__(self, message: any, **properties):
+    def __init__(self, message: Any, **properties):
         super().__init__(
             self.TYPE,
             "A question message from the server",
@@ -91,10 +92,38 @@ class ServerMessage(Message):
 class ClientMessage(Message):
     TYPE = "client_message"
 
-    def __init__(self, message: any, **properties):
+    def __init__(self, message: Any, **properties):
         super().__init__(
             self.TYPE,
             "An answer to a ServerMessage from the server",
+            message=message,
+            **properties,
+        )
+
+
+class PrivateMessage(Message):
+    TYPE = "private_message"
+
+    def __init__(self, from_id: int, to_id: int, message: Any, **properties):
+        super().__init__(
+            self.TYPE,
+            "send a message to a specific user",
+            from_id=from_id,
+            to_id=to_id,
+            message=message,
+            **properties,
+        )
+
+
+class PrivateQuestion(Message):
+    TYPE = "private_question"
+
+    def __init__(self, from_id: int, to_id: int, message: Any, **properties):
+        super().__init__(
+            self.TYPE,
+            "send a question to a specific user",
+            from_id=from_id,
+            to_id=to_id,
             message=message,
             **properties,
         )
@@ -129,19 +158,6 @@ class RoomMessage(Message):
             message=message,
             excluded_users=excluded_users,
             room=room,
-            **properties,
-        )
-
-
-class PrivateMessage(Message):
-    TYPE = "private_message"
-
-    def __init__(self, target_id: int, message: str | dict, **properties):
-        super().__init__(
-            self.TYPE,
-            "send a message to a specific user",
-            target_id=target_id,
-            message=json.dumps(message),
             **properties,
         )
 
@@ -421,8 +437,3 @@ class Answer(Message):
     @property
     def parsed_message(self):
         return Message.parse(self.message)
-
-
-class OKAnswer(Answer):
-    def __init__(self, question_id, process=False, **properties):
-        super().__init__(question_id, OKMessage(), process, **properties)

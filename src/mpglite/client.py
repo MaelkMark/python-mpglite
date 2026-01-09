@@ -51,11 +51,11 @@ class Client:
         # * Event handler callbacks
         # When the client receives a ServerMessage message from the server
         self.on_message: Callable = on_message
-        smart_kwargs(self.on_message, message=None, client=None)
+        smart_kwargs(self.on_message, message=None, sender=None, client=None)
 
         # When the client receives a ServerMessage question from the server
         self.on_question: Callable = on_question
-        smart_kwargs(self.on_question, question=None, client=None)
+        smart_kwargs(self.on_question, question=None, sender=None, client=None)
 
         # When the client joins a room (room_joined)
         self.on_room_joined: Callable = on_room_joined
@@ -176,7 +176,7 @@ class Client:
                 for room_data in message.rooms:
                     room = self._load_room(room_data)
 
-                    room.update(room_data)
+                    room._update(room_data)
                     current_room_names.append(room.name)
 
                 self._rooms = [r for r in self._rooms if r.name in current_room_names]
@@ -230,9 +230,16 @@ class Client:
                     self.on_room_left, user=user, room=room, client=self
                 )
 
-            case "server_message":
+            case "server_message" | "private_message":
+                sender = None
+                if message.type == "private_message":
+                    sender = self.get_user_by_id(message.from_id)
+                
                 self._run_in_thread(
-                    self.on_message, message=message.message, client=self
+                    self.on_message,
+                    message=message.message,
+                    sender=sender,
+                    client=self,
                 )
 
     def _handle_question(self, question: Message):
@@ -241,9 +248,17 @@ class Client:
         match message.type:
             case "server_message":
                 answer = smart_call(
-                    self.on_question, question=message.message, client=self
+                    self.on_question, question=message.message, sender=None, client=self
                 )
 
+                answer_message = ClientMessage(answer)
+                
+            case "private_question":
+                sender = self.get_user_by_id(message.from_id)
+
+                answer = smart_call(
+                    self.on_question, question=message.message, sender=sender, client=self
+                )
                 answer_message = ClientMessage(answer)
 
         if answer_message is not None:
@@ -264,6 +279,14 @@ class Client:
 
     def _send(self, message: Message):
         self.ws.send(str(message))
+
+    def _send_private_message(self, user_id: int, message: str) -> Message:
+        return self._ask(PrivateMessage(from_id=self.user_id, to_id=user_id, message=message))
+
+    def _ask_private_question(self, user_id: int, message: str) -> Message:
+        return self._ask(
+            PrivateQuestion(from_id=self.user_id, to_id=user_id, message=message)
+        )
 
     def send(self, message: Any):
         self._send(ClientMessage(message))
@@ -402,8 +425,12 @@ class User:
             f"User#{self.user_id}({self.username}{' (dead)' if not self.alive else ''})"
         )
 
-    def send(self, message: str | dict):
-        self.__client.send_private_message(self.user_id, message)
+    def send(self, message: str | dict) -> Message:
+        return self.__client._send_private_message(self.user_id, message)
+    
+    def ask(self, message: Any) -> Any:
+        response = self.__client._ask_private_question(self.user_id, message)
+        return getattr(response, "message", response)
 
 
 class Room:
@@ -448,7 +475,7 @@ class Room:
     def __repr__(self):
         return f"Room({self.json})"
 
-    def update(self, room_dict: str | dict):
+    def _update(self, room_dict: str | dict):
         if isinstance(room_dict, str):
             room_dict = json.loads(room_dict)
 
@@ -471,10 +498,10 @@ class Room:
             return False
 
         return self.__client._ask(StartRoomMessage(self.name))
-    
+
     def join(self) -> Message:
         return self.__client.join_room(self.name)
-    
+
     def leave(self) -> Message:
         return self.__client.leave_room()
 

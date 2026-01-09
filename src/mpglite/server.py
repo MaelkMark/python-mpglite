@@ -412,6 +412,7 @@ class Server:
                 print(logo.read())
 
     async def _main(self):
+        self.loop = asyncio.get_running_loop()
         async with websockets.serve(self._handler, self.host, self.port) as ws_server:
             self.logger.info(f"Server started on ws://{self.host}:{self.port}")
             self.ws_server = ws_server
@@ -447,7 +448,6 @@ class Server:
 
                 if message_type == "question":
                     question_message = message.parsed_message
-                    question_id = message.question_id
 
                     await self._handle_question(message, question_message, user)
                 else:
@@ -504,9 +504,9 @@ class Server:
                     self.on_message, message=message.message, user=user, server=self
                 )
 
-    async def _handle_question(
-        self, question: Question, question_message: Message, user: User
-    ):
+    async def _handle_question(self, question: Question, message: Message, user: User):
+        self.logger.debug(f"Handling question #{question.question_id}: {message}")
+        
         async def answer(answer_message: Message):
             self.logger.debug(
                 f"Answering question {question.question_id} with {answer_message}"
@@ -516,7 +516,7 @@ class Server:
                 Answer(question.question_id, answer_message, process=question.process)
             )
 
-        match question_message.type:
+        match message.type:
             case "init_request":
                 await answer(
                     MessageBundle(
@@ -531,7 +531,7 @@ class Server:
                 await answer(self._get_room_list_message())
 
             case "join_room":
-                await answer(await self._join_room(user, question_message.room))
+                await answer(await self._join_room(user, message.room))
 
             case "leave_room":
                 if user.current_room is None:
@@ -547,12 +547,12 @@ class Server:
                     )
 
             case "start_room":
-                room = self.rooms.get(question_message.room)
+                room = self.rooms.get(message.room)
                 if room is None:
                     await answer(
                         ErrorMessage(
                             "ERR_NO_SUCH_ROOM",
-                            f"There's no room named {question_message.room}.",
+                            f"There's no room named {message.room}.",
                         )
                     )
 
@@ -571,7 +571,7 @@ class Server:
                     await answer(room._wants_rematch(user))
 
             case "set_username":
-                username = question_message.username
+                username = message.username
                 if any(user.username == username for user in self.users.values()):
                     await answer(
                         ErrorMessage("ERR_USERNAME_TAKEN", "Username already taken")
@@ -585,10 +585,10 @@ class Server:
                 await answer(
                     await self._create_room(
                         user,
-                        room_name=question_message.room,
-                        min_players=question_message.min_players,
-                        max_players=question_message.max_players,
-                        auto_start=question_message.auto_start,
+                        room_name=message.room,
+                        min_players=message.min_players,
+                        max_players=message.max_players,
+                        auto_start=message.auto_start,
                     )
                 )
 
@@ -597,12 +597,35 @@ class Server:
                     ServerMessage(
                         smart_call(
                             self.on_question,
-                            question=question_message.message,
+                            question=message.message,
                             user=user,
                             server=self,
                         )
                     )
                 )
+
+            case "private_message":
+                if message.to_id not in self.users:
+                    await answer(
+                        ErrorMessage(
+                            "ERR_NO_SUCH_USER",
+                            f"There's no user with id {message.to_id}.",
+                        )
+                    )
+                else:
+                    await self.users[message.to_id]._send(message)
+                    await answer(OKMessage())
+
+            case "private_question":
+                if message.to_id not in self.users:
+                    await answer(
+                        ErrorMessage(
+                            "ERR_NO_SUCH_USER",
+                            f"There's no user with id {message.to_id}.",
+                        )
+                    )
+                else:
+                    await answer(await self.users[message.to_id]._ask(message))
 
     async def _join_room(self, user: User, room_name: str) -> Message:
         if room_name not in self.rooms or self.rooms[room_name].lobby:
