@@ -287,7 +287,7 @@ class Room:
             )
 
             await self._broadcast(UserLeftMessage(user_id, self.name))
-            if len(self.users) == 0 or delete:
+            if len(self.current_players) == 0 or delete:
                 self.server._delete_room(self.name)
 
     def _wants_rematch(self, user: User) -> Message:
