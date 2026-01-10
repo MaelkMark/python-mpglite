@@ -104,6 +104,12 @@ def test_get_room_by_name(temp_client: Client):
     assert room.name == "TestRoom", "Room name is not correct"
 
 
+def test_get_room_by_name_nonexistent(temp_client: Client):
+    """Test Client.get_room_by_name."""
+    room = temp_client.get_room_by_name("NonexistentRoom")
+    assert room is None
+
+
 def test_get_user_by_id(temp_client: Client):
     """Test Client.get_user_by_id."""
     user = temp_client.get_user_by_id(temp_client.user_id)
@@ -111,8 +117,20 @@ def test_get_user_by_id(temp_client: Client):
     assert user.user_id == temp_client.user_id, "User ID is not correct"
 
 
-def test_get_user_by_name(temp_client: Client):
+def test_get_user_by_id_nonexistent(temp_client: Client):
+    """Test Client.get_user_by_id."""
+    user = temp_client.get_user_by_id(123456789)
+    assert user is None
+
+
+def test_get_user_by_username(temp_client: Client):
     """Test Client.get_user_by_username."""
     user = temp_client.get_user_by_username(temp_client.username)
     assert isinstance(user, mpglite.client.User), "User is not a User object"
     assert user.username == temp_client.username, "Username is not correct"
+
+
+def test_get_user_by_username_nonexistent(temp_client: Client):
+    """Test Client.get_user_by_id."""
+    user = temp_client.get_user_by_username(123456789)
+    assert user is None
