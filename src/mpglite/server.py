@@ -172,33 +172,79 @@ class Room:
     def user_in_room(self, user: User) -> bool:
         return user.current_room == self
 
-    async def _broadcast(self, message: Message, excluded_users: list[int] = None):
+    async def _broadcast(
+        self,
+        message: Message,
+        excluded_users: list[int] | None = None,
+        included_users: list[int] | None = None,
+    ):
         """Send a message to everyone in this room."""
         if excluded_users is None:
             excluded_users = []
+        if included_users is None:
+            included_users = []
 
-        for user_id, user in self.users.items():
-            if user_id not in excluded_users:
-                await user._send(message)
+        target_users = [
+            user
+            for user_id, user in self.server.users.items()
+            if (user_id in self.users.keys() and user_id not in excluded_users)
+            or user_id in included_users
+        ]
 
-    def _broadcast_sync(self, message: Message, excluded_users: list[int] = None):
+        for user in target_users:
+            await user._send(message)
+
+    def _broadcast_sync(
+        self,
+        message: Message,
+        excluded_users: list[int] | None = None,
+        included_users: list[int] | None = None,
+    ):
         """
         Synchronous version of _broadcast.
         """
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
         if not self.users:
             return
 
         loop = next(iter(self.users.values())).socket.loop
-        asyncio.run_coroutine_threadsafe(self._broadcast(message, excluded_users), loop)
+        asyncio.run_coroutine_threadsafe(
+            self._broadcast(message, excluded_users, included_users), loop
+        )
 
-    def broadcast(self, message: Any, excluded_users: list[int] = None):
+    def broadcast(
+        self,
+        message: Any,
+        excluded_users: list | None = None,
+        included_users: list | None = None,
+    ):
         """
         Send a message to everyone in this room.
         """
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
         if not self.users:
             return
 
-        return self._broadcast_sync(ServerMessage(message), excluded_users)
+        excluded_users: list[int] = [
+            user.user_id if isinstance(user, User) else user for user in excluded_users
+        ]
+        included_users: list[int] = [
+            user.user_id if isinstance(user, User) else user for user in included_users
+        ]
+
+        return self._broadcast_sync(
+            ServerMessage(message),
+            excluded_users=excluded_users,
+            included_users=included_users,
+        )
 
     async def _add_user(self, user: User) -> Message:
         if len(self.users) >= self.max_players:
@@ -482,20 +528,6 @@ class Server:
                     auto_start=message.auto_start,
                 )
 
-            case "room_message":
-                content = message.message
-                self.logger.debug(f'User {user.user_id} sent: "{content}"')
-
-                if message.room:
-                    room = self.rooms[message.room]
-                else:
-                    room = user.current_room
-
-                await room._broadcast(
-                    content,
-                    [user.user_id, *message.excluded_users],
-                )
-
             case "get_room_list":
                 await user._send(self._get_room_list_message())
 
@@ -506,7 +538,7 @@ class Server:
 
     async def _handle_question(self, question: Question, message: Message, user: User):
         self.logger.debug(f"Handling question #{question.question_id}: {message}")
-        
+
         async def answer(answer_message: Message):
             self.logger.debug(
                 f"Answering question {question.question_id} with {answer_message}"
@@ -626,6 +658,19 @@ class Server:
                     )
                 else:
                     await answer(await self.users[message.to_id]._ask(message))
+
+            case "room_message":
+                if message.room_name:
+                    room = self.rooms[message.room_name]
+                else:
+                    room = user.current_room
+
+                await room._broadcast(
+                    message,
+                    excluded_users=message.excluded_users,
+                    included_users=message.included_users,
+                )
+                await answer(OKMessage())
 
     async def _join_room(self, user: User, room_name: str) -> Message:
         if room_name not in self.rooms or self.rooms[room_name].lobby:

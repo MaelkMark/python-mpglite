@@ -230,11 +230,11 @@ class Client:
                     self.on_room_left, user=user, room=room, client=self
                 )
 
-            case "server_message" | "private_message":
+            case "server_message" | "private_message" | "room_message":
                 sender = None
-                if message.type == "private_message":
+                if message.type != "server_message":
                     sender = self.get_user_by_id(message.from_id)
-                
+
                 self._run_in_thread(
                     self.on_message,
                     message=message.message,
@@ -252,12 +252,15 @@ class Client:
                 )
 
                 answer_message = ClientMessage(answer)
-                
+
             case "private_question":
                 sender = self.get_user_by_id(message.from_id)
 
                 answer = smart_call(
-                    self.on_question, question=message.message, sender=sender, client=self
+                    self.on_question,
+                    question=message.message,
+                    sender=sender,
+                    client=self,
                 )
                 answer_message = ClientMessage(answer)
 
@@ -281,7 +284,9 @@ class Client:
         self.ws.send(str(message))
 
     def _send_private_message(self, user_id: int, message: str) -> Message:
-        return self._ask(PrivateMessage(from_id=self.user_id, to_id=user_id, message=message))
+        return self._ask(
+            PrivateMessage(from_id=self.user_id, to_id=user_id, message=message)
+        )
 
     def _ask_private_question(self, user_id: int, message: str) -> Message:
         return self._ask(
@@ -291,8 +296,10 @@ class Client:
     def send(self, message: Any):
         self._send(ClientMessage(message))
 
-    def _ask(self, message: Message, process: bool = False) -> Message:
-        """Sends a Question and waits for an Answer. Returns the answer Message object."""
+    def _ask_async(
+        self, message: Message, process: bool = False
+    ) -> concurrent.futures.Future:
+        """Sends a Question and returns a Future for the Answer."""
         future = concurrent.futures.Future()
 
         def callback(response):
@@ -306,7 +313,11 @@ class Client:
                 sender_id=self.user_id if self.user_id is not None else "client",
             )
         )
-        return future.result()
+        return future
+
+    def _ask(self, message: Message, process: bool = False) -> Message:
+        """Sends a Question and waits for an Answer. Returns the answer Message object."""
+        return self._ask_async(message, process=process).result()
 
     def ask(self, message: Any) -> Message:
         return self._ask(ClientMessage(message)).message
@@ -332,10 +343,51 @@ class Client:
                 return room
         return None
 
-    # Deprecated: use Room.broadcast instead
-    def send_room_message(self, message: str):
+    def send_room_message(
+        self,
+        message: Any,
+        excluded_users: list | None = None,
+        included_users: list | None = None,
+        exclude_self=True,
+    ) -> Message:
         """Sends a message to all players in the current room."""
-        self._send(RoomMessage(message))
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
+        if self.room is None:
+            return ErrorMessage("ERR_NOT_IN_ROOM", "You are not in a room")
+
+        return self.room.broadcast(
+            message,
+            excluded_users=excluded_users,
+            included_users=included_users,
+            exclude_self=exclude_self,
+        )
+
+    def ask_room_question(
+        self,
+        message: Any,
+        excluded_users: list | None = None,
+        included_users: list | None = None,
+        exclude_self=True,
+    ) -> dict:
+        """Asks a question to all players in the current room."""
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
+        if self.room is None:
+            return ErrorMessage("ERR_NOT_IN_ROOM", "You are not in a room")
+
+        return self.room.ask_everybody(
+            message,
+            excluded_users=excluded_users,
+            included_users=included_users,
+            exclude_self=exclude_self,
+        )
 
     def create_room(
         self, room_name: str, max_players: int = math.inf, min_players: int = 2
@@ -427,7 +479,7 @@ class User:
 
     def send(self, message: str | dict) -> Message:
         return self.__client._send_private_message(self.user_id, message)
-    
+
     def ask(self, message: Any) -> Any:
         response = self.__client._ask_private_question(self.user_id, message)
         return getattr(response, "message", response)
@@ -489,9 +541,97 @@ class Room:
                 self.__client.get_user_by_id(user_id) for user_id in room_dict["users"]
             ]
 
-    def broadcast(self, message: dict, excluded_users: list[int] = None):
+    def broadcast(
+        self,
+        message: dict,
+        excluded_users: list | None = None,
+        included_users: list | None = None,
+        exclude_self=True,
+    ) -> Message:
         """Send a message to everyone in this room."""
-        self.__client._send(RoomMessage(message, self.name, excluded_users))
+
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
+        if self.lobby:
+            return ErrorMessage("ERR_ROOM_LOBBY", "Can't send room message to lobby")
+
+        if exclude_self:
+            excluded_users.append(self.__client.user_id)
+
+        excluded_users = [
+            user.user_id if isinstance(user, User) else user for user in excluded_users
+        ]
+        included_users = [
+            user.user_id if isinstance(user, User) else user for user in included_users
+        ]
+
+        self.logger.debug(f"Broadcasting to room {self.name}: {message}")
+
+        return self.__client._ask(
+            RoomMessage(
+                message,
+                self.__client.user_id,
+                self.name,
+                excluded_users=excluded_users,
+                included_users=included_users,
+            )
+        )
+
+    def ask_everybody(
+        self,
+        message: Any,
+        timeout: int | None = None,
+        excluded_users: list | None = None,
+        included_users: list | None = None,
+        exclude_self=True,
+    ) -> dict[User, Any]:
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
+        if self.lobby:
+            return {}
+
+        if exclude_self:
+            excluded_users.append(self.__client.user_id)
+
+        excluded_users: list[int] = [
+            user.user_id if isinstance(user, User) else user for user in excluded_users
+        ]
+        included_users: list[int] = [
+            user.user_id if isinstance(user, User) else user for user in included_users
+        ]
+
+        target_users: list[User] = [
+            user
+            for user in self.__client._users
+            if (user in self.players and user.user_id not in excluded_users)
+            or user.user_id in included_users
+        ]
+
+        futures = {}
+        for user in target_users:
+            question = PrivateQuestion(
+                from_id=self.__client.user_id, to_id=user.user_id, message=message
+            )
+            futures[user] = self.__client._ask_async(question)
+
+        done, _ = concurrent.futures.wait(futures.values(), timeout=timeout)
+
+        results = {}
+        for user, future in futures.items():
+            if future in done:
+                try:
+                    response = future.result()
+                    results[user] = getattr(response, "message", response)
+                except Exception:
+                    pass
+
+        return results
 
     def start(self) -> Message:
         if len(self.players) < self.min_players:

@@ -148,16 +148,20 @@ class RoomMessage(Message):
     def __init__(
         self,
         message: str,
+        from_id: int,
+        room_name: str,
         excluded_users: list[int] = [],
-        room: str | None = None,
+        included_users: list[int] = [],
         **properties,
     ):
         super().__init__(
             self.TYPE,
             "send a message to the current room",
             message=message,
+            from_id=from_id,
             excluded_users=excluded_users,
-            room=room,
+            included_users=included_users,
+            room_name=room_name,
             **properties,
         )
 
