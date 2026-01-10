@@ -190,6 +190,16 @@ class Client:
                         user_data = json.loads(user_data)
 
                     user = self.get_user_by_id(user_data["user_id"])
+                    if user is None:
+                        user = User(
+                            self,
+                            user_data["user_id"],
+                            "Loading...",
+                            logger=self.logger,
+                            temp=True,
+                        )
+                        self._users.append(user)
+
                     user.username = user_data["username"]
                     user.temp = False
                     current_ids.append(user.user_id)
@@ -294,6 +304,7 @@ class Client:
         )
 
     def send(self, message: Any):
+        """Sends a message to the server."""
         self._send(ClientMessage(message))
 
     def _ask_async(
@@ -320,6 +331,7 @@ class Client:
         return self._ask_async(message, process=process).result()
 
     def ask(self, message: Any) -> Message:
+        """Asks a question from the server and waits for an answer."""
         return self._ask(ClientMessage(message)).message
 
     def get_user_by_id(self, user_id: int):
@@ -327,9 +339,7 @@ class Client:
             if user.user_id == user_id:
                 return user
 
-        new_user = User(self, user_id, "Loading...", logger=self.logger, temp=True)
-        self._users.append(new_user)
-        return new_user
+        return None
 
     def get_user_by_username(self, username: str):
         for user in self._users:
@@ -390,12 +400,19 @@ class Client:
         )
 
     def create_room(
-        self, room_name: str, max_players: int = math.inf, min_players: int = 2
+        self,
+        room_name: str,
+        max_players: int = math.inf,
+        min_players: int = 2,
+        auto_start: bool = True,
     ):
         """Creates a new room and joins to it."""
         return self._ask(
             CreateRoomMessage(
-                room=room_name, min_players=min_players, max_players=max_players
+                room=room_name,
+                min_players=min_players,
+                max_players=max_players,
+                auto_start=auto_start,
             ),
             process=True,
         )
@@ -538,7 +555,9 @@ class Room:
 
         if "users" in room_dict:
             self.players = [
-                self.__client.get_user_by_id(user_id) for user_id in room_dict["users"]
+                user
+                for user_id in room_dict["users"]
+                if (user := self.__client.get_user_by_id(user_id)) is not None
             ]
 
     def broadcast(
@@ -654,9 +673,9 @@ class Room:
             client=client,
             name=room_dict["name"],
             players=[
-                client.get_user_by_id(user_id)
+                user
                 for user_id in room_dict["users"]
-                # if client.get_user_by_id(user_id)
+                if (user := client.get_user_by_id(user_id)) is not None
             ],
             max_players=room_dict["max_players"],
             min_players=room_dict["min_players"],
