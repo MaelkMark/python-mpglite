@@ -422,7 +422,7 @@ class Client:
 
     def join_room(self, room_name: str) -> Message:
         """Joins room"""
-        return self._ask(JoinRoomMessage(room_name))
+        return self._ask(JoinRoomMessage(room_name), process=True)
 
     def leave_room(self) -> Message:
         """Leaves current room"""
