@@ -69,6 +69,20 @@ def test_on_room_joined(temp_client: Client):
     assert kwargs["client"] == temp_client
 
 
+def test_on_room_left(temp_client: Client):
+    """Test that a user remaining in the room gets notified when it's deleted."""
+    temp_client.on_room_left = MagicMock()
+    
+    temp_client.create_room("TempRoom")
+    room = temp_client.room
+    temp_client.leave_room()
+    
+    assert wait_for_mock(temp_client.on_room_left)
+    _, kwargs = temp_client.on_room_left.call_args
+    assert kwargs["room"] == room
+    assert kwargs["client"] == temp_client
+
+
 def test_on_room_started(temp_client: Client):
     temp_client.on_room_started = MagicMock()
     
@@ -103,6 +117,9 @@ def test_on_room_deleted(temp_client: Client):
     temp_client.leave_room()
     
     assert wait_for_mock(temp_client.on_room_deleted)
+    _, kwargs = temp_client.on_room_deleted.call_args
+    assert kwargs["room_name"] == "TempRoom"
+    assert kwargs["client"] == temp_client
 
 
 
