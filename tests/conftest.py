@@ -5,12 +5,12 @@ from mpglite.server import Server
 from mpglite.client import Client
 from mpglite.logger import Loglevel
 
-
+PORT = 8765
 LOGLEVEL = Loglevel.DEBUG
 
 @pytest.fixture(scope="module")
 def server():
-    s = Server(host="localhost", port=8891, print_logo=False, loglevel=LOGLEVEL)
+    s = Server(host="localhost", port=PORT, print_logo=False, loglevel=LOGLEVEL)
     server_thread = threading.Thread(target=s.start, daemon=True)
     server_thread.start()
     time.sleep(0.8)
@@ -21,7 +21,7 @@ def server():
 
 @pytest.fixture(scope="function")
 def temp_client(server):  # Keep the "server" parameter or the server won't start
-    c = Client(host="localhost", port=8891, loglevel=LOGLEVEL)
+    c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
     c.disconnect()
@@ -29,7 +29,7 @@ def temp_client(server):  # Keep the "server" parameter or the server won't star
 
 @pytest.fixture(scope="function")
 def temp_client2(server):  # Keep the "server" parameter or the server won't start
-    c = Client(host="localhost", port=8891, loglevel=LOGLEVEL)
+    c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
     c.disconnect()
@@ -37,7 +37,7 @@ def temp_client2(server):  # Keep the "server" parameter or the server won't sta
 
 @pytest.fixture(scope="module")
 def client_a(server):  # Keep the "server" parameter or the server won't start
-    c = Client(host="localhost", port=8891, loglevel=LOGLEVEL)
+    c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
     c.disconnect()
@@ -45,7 +45,7 @@ def client_a(server):  # Keep the "server" parameter or the server won't start
 
 @pytest.fixture(scope="module")
 def client_b(server):  # Keep the "server" parameter or the server won't start
-    c = Client(host="localhost", port=8891, loglevel=LOGLEVEL)
+    c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
     c.disconnect()
@@ -53,7 +53,7 @@ def client_b(server):  # Keep the "server" parameter or the server won't start
 
 @pytest.fixture(scope="module")
 def client_c(server):  # Keep the "server" parameter or the server won't start
-    c = Client(host="localhost", port=8891, loglevel=LOGLEVEL)
+    c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
     c.disconnect()
@@ -61,7 +61,7 @@ def client_c(server):  # Keep the "server" parameter or the server won't start
 
 @pytest.fixture(scope="module")
 def client_d(server):  # Keep the "server" parameter or the server won't start
-    c = Client(host="localhost", port=8891, loglevel=LOGLEVEL)
+    c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
     c.disconnect()

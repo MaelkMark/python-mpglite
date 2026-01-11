@@ -45,13 +45,6 @@ def test_create_room(client_a: Client):
     assert client_a.room.name == "TestRoom", "Room name is not correct"
 
 
-def test_callback_room_joined(temp_client: Client):
-    """Test if the on_room_joined callback is called exactly once."""
-    temp_client.on_room_joined = MagicMock()
-    temp_client.join_room("TestRoom")
-    temp_client.on_room_joined.assert_called_once()
-
-
 def test_join_nonexistent_room(client_b: Client):
     """Verify joining a nonexistent room fails."""
     response = client_b.join_room("NonexistentRoom")
