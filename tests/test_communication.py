@@ -1,8 +1,33 @@
 from unittest.mock import MagicMock
-from mpglite.client import Client
+from mpglite.client import Client, Room, User
 from mpglite.server import Server
 from testingutils import *
+from conftest import PORT
 
+
+def test_on_room_list(temp_client: Client, temp_client2: Client):
+    temp_client2.on_room_list = MagicMock()
+    
+    temp_client.create_room("TempRoom")
+    
+    assert wait_for_mock(temp_client2.on_room_list)
+    _, kwargs = temp_client2.on_room_list.call_args
+    assert kwargs["client"] == temp_client2
+    assert len(kwargs["rooms"]) == 1
+    assert all(isinstance(room, Room) for room in kwargs["rooms"])
+
+
+def test_on_user_list(temp_client: Client):
+    temp_client.on_user_list = MagicMock()
+    
+    new_client = Client("localhost", PORT)
+    new_client.connect()
+    
+    assert wait_for_mock(temp_client.on_user_list)
+    _, kwargs = temp_client.on_user_list.call_args
+    assert kwargs["client"] == temp_client
+    assert len(kwargs["users"]) == 2
+    assert all(isinstance(user, User) for user in kwargs["users"])
 
 def test_private_message(client_a: Client, client_b: Client):
     # Test string message
