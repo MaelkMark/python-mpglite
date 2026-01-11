@@ -181,7 +181,7 @@ class Client:
 
                 self._rooms = [r for r in self._rooms if r.name in current_room_names]
 
-                self._run_in_thread(self.on_room_list, rooms=self._rooms_filtered)
+                self._run_in_thread(self.on_room_list, rooms=self._rooms_filtered, client=self)
 
             case "user_list":
                 current_ids = []
