@@ -276,7 +276,7 @@ class Room:
         user_id = user.user_id
         if user_id in self.users:
             user.current_room = None
-            # del self.users[user_id]
+            # del self.users[user_id]  # Do not delete the user from self.users, because the server user may need to reference it. Users who have left the room won't be included in self.current_players.
 
         if not self.lobby:
             if user_id in self.wants_rematch:
@@ -390,7 +390,7 @@ class Room:
             del self.users[user_id]
 
         await self._broadcast(RoomEndedMessage(self.name))
-        await self.server._rooms_updated()
+        asyncio.create_task(self.server._rooms_updated())
         return RoomEndedMessage(self.name)
 
     def end(self) -> Message:
@@ -590,6 +590,18 @@ class Server:
 
                 await answer(room.start())
 
+            case "end_room":
+                room = self.rooms.get(message.room)
+                if room is None:
+                    await answer(
+                        ErrorMessage(
+                            "ERR_NO_SUCH_ROOM",
+                            f"There's no room named {message.room}.",
+                        )
+                    )
+
+                await answer(await room._end())
+
             case "rematch":
                 room = user.current_room
                 if room is None:
@@ -751,7 +763,7 @@ class Server:
         del self.rooms[room_name]
         asyncio.create_task(self._rooms_updated())
 
-        return OKMessage()
+        return RoomDeletedMessage(room.name)
 
     def _get_room_list_message(self) -> RoomListMessage:
         return RoomListMessage([str(room) for room in self.rooms.values()])

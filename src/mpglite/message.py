@@ -233,6 +233,13 @@ class StartRoomMessage(Message):
         super().__init__(self.TYPE, "request to start a room", room=room, **properties)
 
 
+class EndRoomMessage(Message):
+    TYPE = "end_room"
+
+    def __init__(self, room: str, **properties):
+        super().__init__(self.TYPE, "request to end a room", room=room, **properties)
+
+
 class RoomStartedMessage(Message):
     TYPE = "room_started"
 

@@ -222,11 +222,14 @@ class Client:
 
             case "room_started":
                 room = self.get_room_by_name(message.room)
+                room.status = "started"
                 self._run_in_thread(self.on_room_started, room=room, client=self)
 
             case "room_ended":
                 room = self.get_room_by_name(message.room)
-                self._run_in_thread(self.on_room_ended, room=room, client=self)
+                if room.status != "ended":
+                    room.status = "ended"
+                    self._run_in_thread(self.on_room_ended, room=room, client=self)
 
             case "room_deleted":
                 self._run_in_thread(
@@ -654,12 +657,16 @@ class Room:
 
     def start(self) -> Message:
         if len(self.players) < self.min_players:
-            return False
+            return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players to start room")
 
-        return self.__client._ask(StartRoomMessage(self.name))
+        return self.__client._ask(StartRoomMessage(self.name), process=True)
+    
+    def end(self) -> Message:
+        return self.__client._ask(EndRoomMessage(self.name), process=True)
 
     def join(self) -> Message:
         return self.__client.join_room(self.name)
+    
 
     def leave(self) -> Message:
         return self.__client.leave_room()
