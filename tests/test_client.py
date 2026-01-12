@@ -2,6 +2,8 @@ from unittest.mock import MagicMock
 from mpglite.client import Client
 from mpglite.message import ErrorMessage, Message
 import mpglite
+from conftest import PORT
+from testingutils import *
 
 
 def test_username_modification(client_a: Client):
@@ -25,13 +27,34 @@ def test_room_list(client_a: Client):
     assert len(client_a.rooms) == 0, "client.rooms is not empty"
 
 
+def test_rooms_changed(temp_client: Client, temp_client2: Client):
+    assert temp_client.rooms_changed == True
+
+    assert len(temp_client.rooms) == 0
+    assert temp_client.rooms_changed == False
+
+    temp_client2.create_room("TempRoom")
+    assert temp_client.rooms_changed == True
+
+
 def test_user_list(client_a: Client):
     """Verify client.users is correct."""
     assert isinstance(client_a.users, list), "client.users is not a list"
-    assert len(client_a.users) == 2, "client.users is not correct length"
+    assert len(client_a.users) > 1, "client.users is not correct length"
     assert all(
         isinstance(user, mpglite.client.User) for user in client_a.users
     ), "client.users contains non-User objects"
+
+
+def test_users_changed(temp_client: Client):
+    assert temp_client.users_changed == True
+
+    assert len(temp_client.users) > 0
+    assert temp_client.users_changed == False
+
+    new_client = Client("localhost", PORT)
+    new_client.connect()
+    assert temp_client.users_changed == True
 
 
 def test_create_room(client_a: Client):

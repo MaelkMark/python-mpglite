@@ -44,9 +44,9 @@ class Client:
 
         self.logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
         self._users: list[User] = []
-        self._users_last: list[Room] = []
+        self._users_last: list[str] | None = None
         self._rooms: list[Room] = []
-        self._rooms_last: list[str] = []
+        self._rooms_last: list[str] | None = None
 
         # * Event handler callbacks
         # When the client receives a ServerMessage message from the server
@@ -86,13 +86,17 @@ class Client:
         smart_kwargs(self.on_user_list, users=None, client=None)
 
     @property
-    def users(self):
-        self._users_last = self._users.copy()
+    def _users_filtered(self):
         return [user for user in self._users if not user.temp]
+    
+    @property
+    def users(self):
+        self._users_last = [repr(user) for user in self._users_filtered]
+        return self._users_filtered
 
     @property
     def users_changed(self):
-        return self._users != self._users_last
+        return [repr(user) for user in self._users_filtered] != self._users_last
 
     @property
     def _rooms_filtered(self):
@@ -105,6 +109,8 @@ class Client:
 
     @property
     def rooms_changed(self):
+        print("Rooms", [repr(room) for room in self._rooms_filtered])
+        print("Rooms last", self._rooms_last)
         return [repr(room) for room in self._rooms_filtered] != self._rooms_last
 
     @property
@@ -181,7 +187,9 @@ class Client:
 
                 self._rooms = [r for r in self._rooms if r.name in current_room_names]
 
-                self._run_in_thread(self.on_room_list, rooms=self._rooms_filtered, client=self)
+                self._run_in_thread(
+                    self.on_room_list, rooms=self._rooms_filtered, client=self
+                )
 
             case "user_list":
                 current_ids = []
@@ -207,7 +215,7 @@ class Client:
                 # Remove users that are no longer connected
                 self._users = [u for u in self._users if u.user_id in current_ids]
 
-                self._run_in_thread(self.on_user_list, users=self.users, client=self)
+                self._run_in_thread(self.on_user_list, users=self._users_filtered, client=self)
 
             case "room_joined":
                 room = self._load_room(message.room)
@@ -497,6 +505,17 @@ class User:
             f"User#{self.user_id}({self.username}{' (dead)' if not self.alive else ''})"
         )
 
+    def __repr__(self):
+        json_data = json.dumps(
+            {
+                "user_id": self.user_id,
+                "username": self.username,
+                "temp": self.temp,
+                "alive": self.alive,
+            }
+        )
+        return f"User({json_data})"
+
     def send(self, message: str | dict) -> Message:
         return self.__client._send_private_message(self.user_id, message)
 
@@ -657,16 +676,17 @@ class Room:
 
     def start(self) -> Message:
         if len(self.players) < self.min_players:
-            return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players to start room")
+            return ErrorMessage(
+                "ERR_NOT_ENOUGH_PLAYERS", "Not enough players to start room"
+            )
 
         return self.__client._ask(StartRoomMessage(self.name), process=True)
-    
+
     def end(self) -> Message:
         return self.__client._ask(EndRoomMessage(self.name), process=True)
 
     def join(self) -> Message:
         return self.__client.join_room(self.name)
-    
 
     def leave(self) -> Message:
         return self.__client.leave_room()
