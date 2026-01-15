@@ -2,7 +2,7 @@ from mpglite.client import Client
 
 def test_connection_successful(temp_client: Client):
     """Verify the socket is actually open."""
-    assert temp_client.ws is not None
+    assert temp_client._Client__ws is not None
     assert temp_client._running is True
 
 

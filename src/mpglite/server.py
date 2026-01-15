@@ -22,8 +22,8 @@ class User:
     id_counter: int = 0
 
     def __init__(self, logger, socket: ServerConnection, username: str | None = None):
-        self.logger = logger
-        self.socket = socket
+        self.__logger = logger
+        self._socket = socket
 
         User.id_counter += 1
         self.user_id: int = User.id_counter
@@ -31,7 +31,7 @@ class User:
         self.username: str = username if username else f"Player {self.user_id}"
         self.current_room: Room | None = None
         self.alive = True
-        self.pending_questions: list[Question] = []
+        self._pending_questions: list[Question] = []
 
     def __str__(self):
         return json.dumps({"user_id": self.user_id, "username": self.username})
@@ -41,14 +41,14 @@ class User:
         try:
             # print(f"Sending {str(message)} to user {self.user_id}")
 
-            await self.socket.send(str(message))
+            await self._socket.send(str(message))
             return True
         except websockets.ConnectionClosed:
             return False
 
     def send(self, message: Any) -> None:
         """Sends data to this specific user."""
-        loop = self.socket.loop
+        loop = self._socket.loop
         asyncio.run_coroutine_threadsafe(self._send(ServerMessage(message)), loop)
 
     async def _ask(self, message: Message, process: bool = False) -> Message:
@@ -64,29 +64,29 @@ class User:
         def callback(response, question_id):
             if not future.done():
                 if isinstance(response, Exception):
-                    if question in self.pending_questions:
-                        self.pending_questions.remove(question)
+                    if question in self._pending_questions:
+                        self._pending_questions.remove(question)
                     loop.call_soon_threadsafe(future.set_exception, response)
                     return
 
-                self.pending_questions = [
+                self._pending_questions = [
                     question
-                    for question in self.pending_questions
+                    for question in self._pending_questions
                     if question.question_id != question_id
                 ]
-                self.logger.debug(
+                self.__logger.debug(
                     f"Answer received for question {question.question_id} from user #{self.user_id}"
                 )
                 loop.call_soon_threadsafe(future.set_result, response)
 
         question: Question = Question(message, callback, process=process, sender_id=0)
-        self.pending_questions.append(question)
+        self._pending_questions.append(question)
         # print(f"Sending question #{question.question_id} to user #{self.user_id}")
         await self._send(question)
         return await future
 
     def ask(self, message: Any, timeout: int | None = None) -> Any:
-        loop = self.socket.loop
+        loop = self._socket.loop
 
         message_object: ServerMessage = ServerMessage(message)
 
@@ -99,20 +99,20 @@ class User:
             return None
 
     async def _disconnected(self):
-        self.logger.info(f"User {self.user_id} disconnected unexpectedly.")
+        self.__logger.info(f"User {self.user_id} disconnected unexpectedly.")
         self.alive = False
 
         error = UserLeftError(
             f"User #{self.user_id} ({self.username}) has already left the game."
         )
 
-        for question in list(self.pending_questions):
+        for question in list(self._pending_questions):
             if question in Question.pending:
                 Question.pending.remove(question)
             if question.callback:
                 question.callback(error, question.question_id)
 
-        self.pending_questions.clear()
+        self._pending_questions.clear()
 
         if self.current_room is not None:
             await self.current_room._remove_user(self)
@@ -136,8 +136,8 @@ class Room:
         auto_start=True,
         lobby=False,
     ):
-        self.server = server
-        self.logger = logger
+        self.__server = server
+        self.__logger = logger
 
         self.name = name
         self.users: dict[int, User] = {}
@@ -186,7 +186,7 @@ class Room:
 
         target_users = [
             user
-            for user_id, user in self.server.users.items()
+            for user_id, user in self.__server.users.items()
             if (user_id in self.users.keys() and user_id not in excluded_users)
             or user_id in included_users
         ]
@@ -211,7 +211,7 @@ class Room:
         if not self.users:
             return
 
-        loop = next(iter(self.users.values())).socket.loop
+        loop = next(iter(self.users.values()))._socket.loop
         asyncio.run_coroutine_threadsafe(
             self._broadcast(message, excluded_users, included_users), loop
         )
@@ -259,19 +259,19 @@ class Room:
                 f'Room "{self.name}" is not open. Cannot add user #{user.user_id}.',
             )
 
-        self.logger.debug(f'Adding user #{user.user_id} to room "{self.name}"')
+        self.__logger.debug(f'Adding user #{user.user_id} to room "{self.name}"')
         self.users[user.user_id] = user
 
-        await self.server.users[user.user_id]._send(RoomJoinedMessage(self))
+        await self.__server.users[user.user_id]._send(RoomJoinedMessage(self))
 
         if self.auto_start and len(self.users) == self.max_players:
-            self.logger.debug(f'Starting room "{self.name}" automatically...')
+            self.__logger.debug(f'Starting room "{self.name}" automatically...')
             self.start()
 
         return OKMessage()
 
     async def _remove_user(self, user: User):
-        self.logger.debug(f'Removing user #{user.user_id} from room "{self.name}"')
+        self.__logger.debug(f'Removing user #{user.user_id} from room "{self.name}"')
 
         user_id = user.user_id
         if user_id in self.users:
@@ -283,12 +283,12 @@ class Room:
                 self.wants_rematch.remove(user_id)
 
             delete = smart_call(
-                self.server.on_room_left, room=self, user=user, server=self.server
+                self.__server.on_room_left, room=self, user=user, server=self.__server
             )
 
             await self._broadcast(UserLeftMessage(user_id, self.name))
             if len(self.current_players) == 0 or delete:
-                self.server._delete_room(self.name)
+                self.__server._delete_room(self.name)
 
     def _wants_rematch(self, user: User) -> Message:
         if user.user_id not in self.users:
@@ -300,7 +300,7 @@ class Room:
         if user.user_id not in self.wants_rematch:
             self.wants_rematch.append(user.user_id)
 
-        self.logger.debug(
+        self.__logger.debug(
             f'Rematch requested by user #{user.user_id} in room "{self.name}" ({len(self.wants_rematch)}/{len(self.users)})'
         )
 
@@ -329,12 +329,12 @@ class Room:
         """
         Asks every player a question and returns a dict of {user_id: Message}.
         """
-        self.logger.debug(f'Asking everybody in room "{self.name}"', message)
+        self.__logger.debug(f'Asking everybody in room "{self.name}"', message)
 
         if not self.users:
             return {}
 
-        loop = next(iter(self.users.values())).socket.loop
+        loop = next(iter(self.users.values()))._socket.loop
 
         message_object: ServerMessage = ServerMessage(message)
 
@@ -345,7 +345,7 @@ class Room:
         try:
             return future.result(timeout=timeout)
         except TimeoutError:
-            self.logger.warning(f'Room "{self.name}": ask_everybody timed out!')
+            self.__logger.warning(f'Room "{self.name}": ask_everybody timed out!')
             return {}
 
     def ask_player(
@@ -360,7 +360,7 @@ class Room:
                 f"User #{self.user_id} ({self.username}) has already left the game."
             )
 
-        return self.server.ask_player(player, message, timeout=timeout)
+        return self.__server.ask_player(player, message, timeout=timeout)
 
     def start(self) -> Message:
         if self.lobby:
@@ -370,11 +370,11 @@ class Room:
         if len(self.users) < self.min_players:
             return ErrorMessage("ERR_NOT_ENOUGH_PLAYERS", "Not enough players.")
 
-        self.logger.debug(f'Starting room "{self.name}"...')
+        self.__logger.debug(f'Starting room "{self.name}"...')
 
         self.status = "started"
 
-        self.server._room_started(self)
+        self.__server._room_started(self)
 
         message = RoomStartedMessage(self.name)
         asyncio.create_task(self._broadcast(message))
@@ -390,27 +390,27 @@ class Room:
             del self.users[user_id]
 
         await self._broadcast(RoomEndedMessage(self.name))
-        asyncio.create_task(self.server._rooms_updated())
+        asyncio.create_task(self.__server._rooms_updated())
         return RoomEndedMessage(self.name)
 
     def end(self) -> Message:
-        loop = next(iter(self.users.values())).socket.loop
+        loop = next(iter(self.users.values()))._socket.loop
         future = asyncio.run_coroutine_threadsafe(self._end(), loop)
         return future.result()
 
     def rematch(self) -> Message:
-        self.logger.debug(f'Rematching room "{self.name}"...')
+        self.__logger.debug(f'Rematching room "{self.name}"...')
         return self.start()
 
     def delete(self) -> Message:
-        return self.server._delete_room(self.name)
+        return self.__server._delete_room(self.name)
 
 
 class Lobby(Room):
-    def __init__(self, server):
+    def __init__(self, server, logger):
         super().__init__(
             server=server,
-            logger=server.logger,
+            logger=logger,
             name="lobby",
             max_players=math.inf,
             min_players=0,
@@ -435,11 +435,11 @@ class Server:
         # * Server properties
         self.host: str = host
         self.port: int = port
-        self.logger = get_logger(loglevel=(loglevel if loglevel else Loglevel.OFF))
-        self.rooms: dict[str, Room] = {"lobby": Lobby(self)}
+        self.__logger = get_logger(loglevel=(loglevel if loglevel else Loglevel.OFF))
+        self.rooms: dict[str, Room] = {"lobby": Lobby(self, self.__logger)}
         self.users: dict[int, User] = {}
-        self.ws_server = None
-        self.stop_event = asyncio.Event()
+        self.__ws_server = None
+        self.__stop_event = asyncio.Event()
 
         # * Options
         self.exception_when_user_leaves: bool = exception_when_user_leaves
@@ -466,19 +466,19 @@ class Server:
     async def _main(self):
         self.loop = asyncio.get_running_loop()
         async with websockets.serve(self._handler, self.host, self.port) as ws_server:
-            self.logger.info(f"Server started on ws://{self.host}:{self.port}")
-            self.ws_server = ws_server
-            await self.stop_event.wait()
-            self.logger.info("Server shutting down...")
+            self.__logger.info(f"Server started on ws://{self.host}:{self.port}")
+            self.__ws_server = ws_server
+            await self.__stop_event.wait()
+            self.__logger.info("Server shutting down...")
 
     async def _broadcast(self, message: Message):
-        self.logger.debug(f"Broadcasting: {repr(message)}")
+        self.__logger.debug(f"Broadcasting: {repr(message)}")
 
         for user in self.users.values():
             await user._send(message)
 
     async def _handler(self, websocket: ServerConnection):
-        user = User(self.logger, websocket)
+        user = User(self.__logger, websocket)
         self.users[user.user_id] = user
 
         # Join lobby by default
@@ -493,7 +493,7 @@ class Server:
                 # data: dict = json.loads(message_json)
                 # msg_type: str = data.get("type")
 
-                self.logger.debug(f"Received message: {message_json}")
+                self.__logger.debug(f"Received message: {message_json}")
 
                 message: Message = Message.parse(message_json)
                 message_type = message.type
@@ -529,8 +529,8 @@ class Server:
                 await self._create_room(
                     user,
                     room_name=message.room,
-                    min_players=message.min_players,
                     max_players=message.max_players,
+                    min_players=message.min_players,
                     auto_start=message.auto_start,
                 )
 
@@ -543,10 +543,10 @@ class Server:
                 )
 
     async def _handle_question(self, question: Question, message: Message, user: User):
-        self.logger.debug(f"Handling question #{question.question_id}: {message}")
+        self.__logger.debug(f"Handling question #{question.question_id}: {message}")
 
         async def answer(answer_message: Message):
-            self.logger.debug(
+            self.__logger.debug(
                 f"Answering question {question.question_id} with {answer_message}"
             )
 
@@ -732,7 +732,12 @@ class Server:
         return RoomLeftMessage(room.name)
 
     async def _create_room(
-        self, user: User, room_name: str, max_players: int, **kwargs
+        self,
+        user: User,
+        room_name: str,
+        max_players: int,
+        min_players: int,
+        auto_start: bool,
     ) -> Message:
 
         if room_name in self.rooms.keys():
@@ -741,7 +746,12 @@ class Server:
             )
 
         self.rooms[room_name] = Room(
-            server=self, logger=self.logger, name=room_name, max_players=max_players, **kwargs
+            server=self,
+            logger=self.__logger,
+            name=room_name,
+            max_players=max_players,
+            min_players=min_players,
+            auto_start=auto_start,
         )
 
         await self._join_room(user, room_name)
@@ -778,12 +788,12 @@ class Server:
         return UserListMessage([str(user) for user in self.users.values()])
 
     async def _rooms_updated(self) -> None:
-        self.logger.debug("Rooms updated")
+        self.__logger.debug("Rooms updated")
 
         await self._broadcast(self._get_room_list_message())
 
     async def _users_updated(self) -> None:
-        self.logger.debug("Users updated")
+        self.__logger.debug("Users updated")
 
         await self._broadcast(self._get_user_list_message())
 
@@ -834,10 +844,10 @@ class Server:
     def stop(self):
         """Stop the server."""
         if hasattr(self, "loop"):
-            self.loop.call_soon_threadsafe(self.stop_event.set)
+            self.loop.call_soon_threadsafe(self.__stop_event.set)
         else:
             # If running in the same thread (like in a test)
-            self.stop_event.set()
+            self.__stop_event.set()
 
     @staticmethod
     def response_ok(response: Any):

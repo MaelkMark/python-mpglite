@@ -34,7 +34,7 @@ class Client:
     ):
         # * WebSocket properties
         self.uri: str = f"ws://{host}:{port}"
-        self.ws: ClientConnection = None
+        self.__ws: ClientConnection = None
         self._running: bool = False
 
         # * User properties
@@ -42,7 +42,7 @@ class Client:
         self.username: str | None = None
         self.room: Room | None = None
 
-        self.logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
+        self.__logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
         self._users: list[User] = []
         self._users_last: list[str] | None = None
         self._rooms: list[Room] = []
@@ -126,8 +126,8 @@ class Client:
     def _listen(self):
         while self._running:
             try:
-                message_json = self.ws.recv()
-                self.logger.debug(f"Message received: {message_json}")
+                message_json = self.__ws.recv()
+                self.__logger.debug(f"Message received: {message_json}")
                 message = Message.parse(message_json)
 
                 payload = message
@@ -163,8 +163,8 @@ class Client:
                     )
                 break
             except Exception as e:
-                self.logger.critical(f"Listener error: {e}")
-                self.logger.critical(traceback.format_exc())
+                self.__logger.critical(f"Listener error: {e}")
+                self.__logger.critical(traceback.format_exc())
                 self._running = False
                 break
 
@@ -201,7 +201,7 @@ class Client:
                     if user is None:
                         user = User(
                             client=self,
-                            logger=self.logger,
+                            logger=self.__logger,
                             user_id=user_data["user_id"],
                             username="Loading...",
                             temp=True,
@@ -221,7 +221,7 @@ class Client:
                 room = self._load_room(message.room)
 
                 if self.room != room:
-                    self.logger.debug(f'Joined to room "{room.name}"')
+                    self.__logger.debug(f'Joined to room "{room.name}"')
                     self.room = room
                     self._run_in_thread(self.on_room_joined, room=room, client=self)
 
@@ -296,13 +296,13 @@ class Client:
 
         room = self.get_room_by_name(room_data["name"])
         if not room:
-            room = Room.parse(self, room_data, self.logger)
+            room = Room.parse(self, room_data, self.__logger)
             self._rooms.append(room)
 
         return room
 
     def _send(self, message: Message):
-        self.ws.send(str(message))
+        self.__ws.send(str(message))
 
     def _send_private_message(self, user_id: int, message: str) -> Message:
         return self._ask(
@@ -456,7 +456,7 @@ class Client:
         """Connects to the server and starts the listener thread"""
 
         try:
-            self.ws = ws_connect(self.uri)
+            self.__ws = ws_connect(self.uri)
         except (ConnectionRefusedError, OSError):
             raise ServerNotFoundError(
                 f"Failed to connect: Could not reach server at {self.uri}. Is the server running?"
@@ -485,8 +485,8 @@ class Client:
     def disconnect(self):
         """Disconnects from the server."""
         self._running = False
-        if self.ws:
-            self.ws.close()
+        if self.__ws:
+            self.__ws.close()
 
 
 class User:
@@ -494,7 +494,7 @@ class User:
         self, client: Client, logger, user_id: int, username: str, temp: bool = False
     ):
         self.__client = client
-        self.logger = logger
+        self.__logger = logger
         self.user_id = user_id
         self.username = username
         self.temp = temp
@@ -537,7 +537,7 @@ class Room:
         lobby: bool = False,
     ):
         self.__client = client
-        self.logger = logger
+        self.__logger = logger
         self.name = name
         self.players: dict[int, User] = players
         self.max_players = max_players
@@ -609,7 +609,7 @@ class Room:
             user.user_id if isinstance(user, User) else user for user in included_users
         ]
 
-        self.logger.debug(f"Broadcasting to room {self.name}: {message}")
+        self.__logger.debug(f"Broadcasting to room {self.name}: {message}")
 
         return self.__client._ask(
             RoomMessage(
