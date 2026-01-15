@@ -20,7 +20,7 @@ def server():
 
 
 @pytest.fixture(scope="function")
-def temp_client(server):  # Keep the "server" parameter or the server won't start
+def temp_client_a(server):  # Keep the "server" parameter or the server won't start
     c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c
@@ -28,7 +28,7 @@ def temp_client(server):  # Keep the "server" parameter or the server won't star
 
 
 @pytest.fixture(scope="function")
-def temp_client2(server):  # Keep the "server" parameter or the server won't start
+def temp_client_b(server):  # Keep the "server" parameter or the server won't start
     c = Client(host="localhost", port=PORT, loglevel=LOGLEVEL)
     c.connect()
     yield c

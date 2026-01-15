@@ -27,14 +27,14 @@ def test_room_list(client_a: Client):
     assert len(client_a.rooms) == 0, "client.rooms is not empty"
 
 
-def test_rooms_changed(temp_client: Client, temp_client2: Client):
-    assert temp_client.rooms_changed == True
+def test_rooms_changed(temp_client_a: Client, temp_client_b: Client):
+    assert temp_client_a.rooms_changed == True
 
-    assert len(temp_client.rooms) == 0
-    assert temp_client.rooms_changed == False
+    assert len(temp_client_a.rooms) == 0
+    assert temp_client_a.rooms_changed == False
 
-    temp_client2.create_room("TempRoom")
-    assert temp_client.rooms_changed == True
+    temp_client_b.create_room("TempRoom")
+    assert temp_client_a.rooms_changed == True
 
 
 def test_user_list(client_a: Client):
@@ -46,15 +46,15 @@ def test_user_list(client_a: Client):
     ), "client.users contains non-User objects"
 
 
-def test_users_changed(temp_client: Client):
-    assert temp_client.users_changed == True
+def test_users_changed(temp_client_a: Client):
+    assert temp_client_a.users_changed == True
 
-    assert len(temp_client.users) > 0
-    assert temp_client.users_changed == False
+    assert len(temp_client_a.users) > 0
+    assert temp_client_a.users_changed == False
 
     new_client = Client("localhost", PORT)
     new_client.connect()
-    assert temp_client.users_changed == True
+    assert temp_client_a.users_changed == True
 
 
 def test_create_room(client_a: Client):
@@ -113,40 +113,40 @@ def test_room_leave(client_b: Client):
     assert client_b.room is None, "client.room is not None"
 
 
-def test_get_room_by_name(temp_client: Client):
+def test_get_room_by_name(temp_client_a: Client):
     """Test Client.get_room_by_name."""
-    room = temp_client.get_room_by_name("TestRoom")
+    room = temp_client_a.get_room_by_name("TestRoom")
     assert isinstance(room, mpglite.client.Room), "Room is not a Room object"
     assert room.name == "TestRoom", "Room name is not correct"
 
 
-def test_get_room_by_name_nonexistent(temp_client: Client):
+def test_get_room_by_name_nonexistent(temp_client_a: Client):
     """Test Client.get_room_by_name."""
-    room = temp_client.get_room_by_name("NonexistentRoom")
+    room = temp_client_a.get_room_by_name("NonexistentRoom")
     assert room is None
 
 
-def test_get_user_by_id(temp_client: Client):
+def test_get_user_by_id(temp_client_a: Client):
     """Test Client.get_user_by_id."""
-    user = temp_client.get_user_by_id(temp_client.user_id)
+    user = temp_client_a.get_user_by_id(temp_client_a.user_id)
     assert isinstance(user, mpglite.client.User), "User is not a User object"
-    assert user.user_id == temp_client.user_id, "User ID is not correct"
+    assert user.user_id == temp_client_a.user_id, "User ID is not correct"
 
 
-def test_get_user_by_id_nonexistent(temp_client: Client):
+def test_get_user_by_id_nonexistent(temp_client_a: Client):
     """Test Client.get_user_by_id."""
-    user = temp_client.get_user_by_id(123456789)
+    user = temp_client_a.get_user_by_id(123456789)
     assert user is None
 
 
-def test_get_user_by_username(temp_client: Client):
+def test_get_user_by_username(temp_client_a: Client):
     """Test Client.get_user_by_username."""
-    user = temp_client.get_user_by_username(temp_client.username)
+    user = temp_client_a.get_user_by_username(temp_client_a.username)
     assert isinstance(user, mpglite.client.User), "User is not a User object"
-    assert user.username == temp_client.username, "Username is not correct"
+    assert user.username == temp_client_a.username, "Username is not correct"
 
 
-def test_get_user_by_username_nonexistent(temp_client: Client):
+def test_get_user_by_username_nonexistent(temp_client_a: Client):
     """Test Client.get_user_by_id."""
-    user = temp_client.get_user_by_username(123456789)
+    user = temp_client_a.get_user_by_username(123456789)
     assert user is None
