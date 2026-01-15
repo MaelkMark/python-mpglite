@@ -200,10 +200,10 @@ class Client:
                     user = self.get_user_by_id(user_data["user_id"])
                     if user is None:
                         user = User(
-                            self,
-                            user_data["user_id"],
-                            "Loading...",
+                            client=self,
                             logger=self.logger,
+                            user_id=user_data["user_id"],
+                            username="Loading...",
                             temp=True,
                         )
                         self._users.append(user)
@@ -491,14 +491,14 @@ class Client:
 
 class User:
     def __init__(
-        self, client: Client, user_id: int, username: str, logger, temp: bool = False
+        self, client: Client, logger, user_id: int, username: str, temp: bool = False
     ):
         self.__client = client
+        self.logger = logger
         self.user_id = user_id
         self.username = username
         self.temp = temp
         self.alive = True
-        self.logger = logger
 
     def __str__(self):
         return (
@@ -528,8 +528,8 @@ class Room:
     def __init__(
         self,
         client: Client,
-        name: str,
         logger,
+        name: str,
         players: list[User] = [],
         max_players: int = math.inf,
         min_players: int = 2,
@@ -698,6 +698,7 @@ class Room:
 
         return Room(
             client=client,
+            logger=logger,
             name=room_dict["name"],
             players=[
                 user
@@ -708,5 +709,4 @@ class Room:
             min_players=room_dict["min_players"],
             auto_start=room_dict["auto_start"],
             lobby=room_dict["lobby"],
-            logger=logger,
         )

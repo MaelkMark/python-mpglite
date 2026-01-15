@@ -21,9 +21,9 @@ from websockets.asyncio.server import ServerConnection
 class User:
     id_counter: int = 0
 
-    def __init__(self, socket: ServerConnection, logger, username: str | None = None):
-        self.socket = socket
+    def __init__(self, logger, socket: ServerConnection, username: str | None = None):
         self.logger = logger
+        self.socket = socket
 
         User.id_counter += 1
         self.user_id: int = User.id_counter
@@ -129,8 +129,8 @@ class Room:
     def __init__(
         self,
         server,
-        name,
         logger,
+        name,
         max_players=math.inf,
         min_players=2,
         auto_start=True,
@@ -409,7 +409,13 @@ class Room:
 class Lobby(Room):
     def __init__(self, server):
         super().__init__(
-            server, "lobby", server.logger, math.inf, 0, auto_start=False, lobby=True
+            server=server,
+            logger=server.logger,
+            name="lobby",
+            max_players=math.inf,
+            min_players=0,
+            auto_start=False,
+            lobby=True,
         )
 
 
@@ -472,7 +478,7 @@ class Server:
             await user._send(message)
 
     async def _handler(self, websocket: ServerConnection):
-        user = User(websocket, logger=self.logger)
+        user = User(self.logger, websocket)
         self.users[user.user_id] = user
 
         # Join lobby by default
@@ -735,7 +741,7 @@ class Server:
             )
 
         self.rooms[room_name] = Room(
-            self, room_name, self.logger, max_players, **kwargs
+            server=self, logger=self.logger, name=room_name, max_players=max_players, **kwargs
         )
 
         await self._join_room(user, room_name)
