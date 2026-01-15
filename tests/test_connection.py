@@ -1,4 +1,9 @@
 from mpglite.client import Client
+from mpglite.exceptions import *
+from conftest import PORT, LOGLEVEL
+
+import pytest
+
 
 def test_connection_successful(temp_client: Client):
     """Verify the socket is actually open."""
@@ -15,3 +20,9 @@ def test_user_id(temp_client):
 def test_default_username(client_a: Client):
     """Verify the 'Player [user_id]' naming logic."""
     assert client_a.username == f"Player {client_a.user_id}"
+
+
+def test_server_not_found():
+    with pytest.raises(ServerNotFoundError):
+        c = Client(host="no-such-host", port=PORT, loglevel=LOGLEVEL)
+        c.connect()

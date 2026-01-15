@@ -113,10 +113,6 @@ class Client:
         print("Rooms last", self._rooms_last)
         return [repr(room) for room in self._rooms_filtered] != self._rooms_last
 
-    @property
-    def lobby(self):
-        return next((room for room in self._rooms if room.lobby), None)
-
     def _run_in_thread(self, func, **kwargs):
         if func:
             threading.Thread(
@@ -377,7 +373,7 @@ class Client:
         if included_users is None:
             included_users = []
 
-        if self.room is None:
+        if self.room is None or self.room.lobby:
             return ErrorMessage("ERR_NOT_IN_ROOM", "You are not in a room")
 
         return self.room.broadcast(
@@ -400,7 +396,7 @@ class Client:
         if included_users is None:
             included_users = []
 
-        if self.room is None:
+        if self.room is None or self.room.lobby:
             return ErrorMessage("ERR_NOT_IN_ROOM", "You are not in a room")
 
         return self.room.ask_everybody(
@@ -437,17 +433,12 @@ class Client:
         return self._ask(LeaveRoomMessage(), process=True)
 
     def rematch(self) -> Message:
-        if self.room is None:
+        if self.room is None or self.room.lobby:
             return ErrorMessage(
                 "ERR_REMATCH_NO_ROOM", "You are not in a room, can't rematch."
             )
 
         return self._ask(RematchMessage())
-
-    def get_room_list(self):
-        """Returns a list of all rooms."""
-        response = self._ask(Message("get_room_list"))
-        return response.rooms
 
     def set_username(self, username: str) -> Message:
         return self._ask(Message("set_username", username=username), process=True)
@@ -460,10 +451,6 @@ class Client:
         except (ConnectionRefusedError, OSError):
             raise ServerNotFoundError(
                 f"Failed to connect: Could not reach server at {self.uri}. Is the server running?"
-            )
-        except InvalidURI:
-            raise InvalidURIError(
-                f"Failed to connect: The URI {self.uri} is incorrectly formatted."
             )
         except ConnectionClosed:
             raise ConnectionLostError(
@@ -690,6 +677,9 @@ class Room:
 
     def leave(self) -> Message:
         return self.__client.leave_room()
+
+    def rematch(self) -> Message:
+        return self.__client.rematch()
 
     @staticmethod
     def parse(client: Client, room_dict: str | dict, logger):
