@@ -355,7 +355,11 @@ class Room:
         results: list[ClientMessage] = await asyncio.gather(*tasks.values())
         results: list[Any] = [message.message for message in results]
 
-        return dict(zip(tasks.keys(), results))
+        return {
+            user: result
+            for user, result in zip(tasks.keys(), results)
+            if result is not None
+        }
 
     def ask_everybody(
         self,

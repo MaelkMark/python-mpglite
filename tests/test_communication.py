@@ -547,8 +547,24 @@ def test_room_ask_everybody_include_self(
     assert answer_with_ids == expected_answer, "Answer is not correct"
 
 
+def test_room_ask_everybody_timeout(
+    client_a: Client,
+    client_b: Client,
+    client_c: Client,
+    client_d: Client,
+):
+    client_a.on_question = None
+    client_b.on_question = None
+    client_c.on_question = None
+    client_d.on_question = None
+
+    answer = client_a.room.ask_everybody("TestQuestion", timeout=0.5)
+
+    assert answer == {}
+
+
 def test_server_room_ask_everybody(
-    server, client_a: Client, client_b: Client, client_c: Client, client_d: Client
+    server: Server, client_a: Client, client_b: Client, client_c: Client, client_d: Client
 ):
     client_a.on_question = MagicMock(return_value="TestAnswer")
     client_b.on_question = MagicMock(return_value="TestAnswer")
@@ -668,6 +684,23 @@ def test_server_room_ask_everybody_included(
         ]
     }
     assert answer_with_ids == expected_answer, "Answer is not correct"
+
+
+def test_server_room_ask_everybody_timeout(
+    server,
+    client_a: Client,
+    client_b: Client,
+    client_c: Client,
+    client_d: Client,
+):
+    client_a.on_question = None
+    client_b.on_question = None
+    client_c.on_question = None
+    client_d.on_question = None
+
+    answer = server.rooms["TestRoom"].ask_everybody("TestQuestion", timeout=0.5)
+
+    assert answer == {}
 
 
 def test_ask_room_question(

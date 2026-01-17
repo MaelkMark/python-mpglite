@@ -655,7 +655,9 @@ class Room:
             if future in done:
                 try:
                     response = future.result()
-                    results[user] = getattr(response, "message", response)
+                    result = getattr(response, "message", response)
+                    if result is not None:
+                        results[user] = result
                 except Exception:
                     pass
 
