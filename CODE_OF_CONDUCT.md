@@ -1,6 +1,18 @@
 
 # Code of Conduct
 
+<!-- omit from toc -->
+## Table of Contents
+- [Our Pledge](#our-pledge)
+- [Encouraged Behaviors](#encouraged-behaviors)
+- [Restricted Behaviors](#restricted-behaviors)
+  - [Other Restrictions](#other-restrictions)
+- [Reporting an Issue](#reporting-an-issue)
+- [Addressing and Repairing Harm](#addressing-and-repairing-harm)
+- [Scope](#scope)
+- [Attribution](#attribution)
+
+
 ## Our Pledge
 
 We pledge to make our community welcoming, safe, and equitable for all.

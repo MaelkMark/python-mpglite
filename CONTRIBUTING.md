@@ -2,17 +2,15 @@
 
 All types of contributions are encouraged and valued. See the Table of Contents for different ways to help and details about how this project handles them. Please make sure to read the relevant section before making your contribution. The community looks forward to your contributions. 🎉
 
+<!-- omit from toc -->
 ## Table of Contents
-
-- [Contributing to MPGLite](#contributing-to-mpglite)
-  - [Table of Contents](#table-of-contents)
-  - [Reporting Bugs](#reporting-bugs)
-    - [Before Submitting a Bug Report](#before-submitting-a-bug-report)
-    - [How Do I Submit a Good Bug Report?](#how-do-i-submit-a-good-bug-report)
-  - [Suggesting Enhancements](#suggesting-enhancements)
-    - [Before Submitting an Enhancement](#before-submitting-an-enhancement)
-    - [How Do I Submit a Good Enhancement Suggestion?](#how-do-i-submit-a-good-enhancement-suggestion)
-  - [Code Contribution](#code-contribution)
+- [Reporting Bugs](#reporting-bugs)
+  - [Before Submitting a Bug Report](#before-submitting-a-bug-report)
+  - [How Do I Submit a Good Bug Report?](#how-do-i-submit-a-good-bug-report)
+- [Suggesting Enhancements](#suggesting-enhancements)
+  - [Before Submitting an Enhancement](#before-submitting-an-enhancement)
+  - [How Do I Submit a Good Enhancement Suggestion?](#how-do-i-submit-a-good-enhancement-suggestion)
+- [Code Contribution](#code-contribution)
 
 ## Reporting Bugs
 

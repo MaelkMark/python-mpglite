@@ -4,12 +4,11 @@ This guide describes how to test MPGLite. The tests are located in the [tests](t
 
 <!-- omit from toc -->
 ## Table of Contents
-- [Testing MPGLite](#testing-mpglite)
-  - [Requirements](#requirements)
-  - [Tests](#tests)
-  - [Running the tests](#running-the-tests)
-  - [Troubleshooting](#troubleshooting)
-  - [Automatic testing with GitHub Actions](#automatic-testing-with-github-actions)
+- [Requirements](#requirements)
+- [Tests](#tests)
+- [Running the tests](#running-the-tests)
+- [Troubleshooting](#troubleshooting)
+- [Automatic testing with GitHub Actions](#automatic-testing-with-github-actions)
 
 
 ## Requirements
