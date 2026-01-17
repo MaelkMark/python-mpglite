@@ -2,6 +2,16 @@
 
 This guide describes how to test MPGLite. The tests are located in the [tests](tests) folder and are run using [pytest](https://docs.pytest.org/).
 
+<!-- omit from toc -->
+## Table of Contents
+- [Testing MPGLite](#testing-mpglite)
+  - [Requirements](#requirements)
+  - [Tests](#tests)
+  - [Running the tests](#running-the-tests)
+  - [Troubleshooting](#troubleshooting)
+  - [Automatic testing with GitHub Actions](#automatic-testing-with-github-actions)
+
+
 ## Requirements
 
 To be able to run the tests, you need to have the [pytest](https://docs.pytest.org/) and mpglite installed.
@@ -41,6 +51,12 @@ pytest tests
 To run a specific test file, simply this command in the root of the repository:
 ```
 pytest tests/test_file_name.py
+```
+
+## Troubleshooting
+Terminating the tests may not end all processes using the port. This could cause some or even all of the tests to fail. In this case, run [free_port.py](tests/free_port.py) (located in the tests folder). It kills port 8765 by default, but you can pass the port number as an argument (8888, for example).
+```
+python tests/free_port.py 8888
 ```
 
 ## Automatic testing with GitHub Actions
