@@ -435,10 +435,10 @@ class Client:
     def rematch(self) -> Message:
         if self.room is None or self.room.lobby:
             return ErrorMessage(
-                "ERR_REMATCH_NO_ROOM", "You are not in a room, can't rematch."
+                "ERR_NOT_IN_ROOM", "You are not in a room, can't rematch."
             )
 
-        return self._ask(RematchMessage())
+        return self._ask(RematchMessage(), process=True)
 
     def set_username(self, username: str) -> Message:
         return self._ask(Message("set_username", username=username), process=True)

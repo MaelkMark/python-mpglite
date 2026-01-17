@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 from mpglite.client import Client
+from mpglite.message import ErrorMessage
 from mpglite.server import Server
 from testingutils import *
 import mpglite
@@ -120,6 +121,44 @@ def test_on_room_deleted(temp_client_a: Client):
     assert kwargs["client"] == temp_client_a
 
 
+def test_client_rematch(temp_client_a: Client, temp_client_b: Client):
+    temp_client_a.on_room_started = MagicMock()
+    temp_client_b.on_room_started = MagicMock()
+    
+    temp_client_a.create_room("TempRoom")
+    temp_client_b.join_room("TempRoom")
+    temp_client_a.room.end()
+    assert temp_client_a.room.status == "ended"
+    
+    temp_client_a.rematch()
+    assert temp_client_a.room.status == "ended"
+    
+    temp_client_b.rematch()
+    assert temp_client_b.room.status == "started"
+    
+    assert wait_for_mock(temp_client_a.on_room_started)
+    assert wait_for_mock(temp_client_b.on_room_started)
+
+
+def test_client_rematch_not_in_room(temp_client_a: Client):
+    response = temp_client_a.rematch()
+    assert isinstance(response, ErrorMessage)
+    assert response.error_code == "ERR_NOT_IN_ROOM"
+
+
+def test_room_rematch(temp_client_a: Client, temp_client_b: Client):
+    temp_client_a.create_room("TempRoom")
+    temp_client_b.join_room("TempRoom")
+    temp_client_a.room.end()
+    assert temp_client_a.room.status == "ended"
+    
+    temp_client_a.room.rematch()
+    assert temp_client_a.room.status == "ended"
+    
+    temp_client_b.room.rematch()
+    assert temp_client_b.room.status == "started"
+
+
 def test_join_room(
     client_a: Client, client_b: Client, client_c: Client, client_d: Client
 ):
@@ -129,3 +168,4 @@ def test_join_room(
     for client in [client_a, client_b, client_c, client_d]:
         client.join_room("TestRoom")
         assert client.room.name == "TestRoom"
+
