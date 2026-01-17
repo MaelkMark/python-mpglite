@@ -197,8 +197,8 @@ class Room:
     def _broadcast_sync(
         self,
         message: Message,
-        excluded_users: list[int] | None = None,
-        included_users: list[int] | None = None,
+        excluded_users: list[int | User] | None = None,
+        included_users: list[int | User] | None = None,
     ):
         """
         Synchronous version of _broadcast.
@@ -207,6 +207,13 @@ class Room:
             excluded_users = []
         if included_users is None:
             included_users = []
+
+        excluded_users = [
+            user.user_id if isinstance(user, User) else user for user in excluded_users
+        ]
+        included_users = [
+            user.user_id if isinstance(user, User) else user for user in included_users
+        ]
 
         if not self.users:
             return
@@ -219,8 +226,8 @@ class Room:
     def broadcast(
         self,
         message: Any,
-        excluded_users: list | None = None,
-        included_users: list | None = None,
+        excluded_users: list[int | User] | None = None,
+        included_users: list[int | User] | None = None,
     ):
         """
         Send a message to everyone in this room.
@@ -229,6 +236,13 @@ class Room:
             excluded_users = []
         if included_users is None:
             included_users = []
+
+        excluded_users = [
+            user.user_id if isinstance(user, User) else user for user in excluded_users
+        ]
+        included_users = [
+            user.user_id if isinstance(user, User) else user for user in included_users
+        ]
 
         if not self.users:
             return
@@ -311,13 +325,31 @@ class Room:
         return OKMessage()
 
     async def _ask_everybody_async(
-        self, message: Message, process: bool = False
-    ) -> dict[int, Any]:
+        self,
+        message: Message,
+        process: bool = False,
+        excluded_users: list[int | User] = None,
+        included_users: list[int | User] = None,
+    ) -> dict[User, Any]:
         """Internal async handler to ask everyone at the same time."""
+
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
+
+        excluded_users = [
+            user.user_id if isinstance(user, User) else user for user in excluded_users
+        ]
+        included_users = [
+            user.user_id if isinstance(user, User) else user for user in included_users
+        ]
+
         tasks = {
-            user.user_id: (user._ask(message, process=process))
-            for user in self.users.values()
-            if user.in_room(self)
+            user: (user._ask(message, process=process))
+            for user in self.__server.users.values()
+            if (user.in_room(self) and user.user_id not in excluded_users)
+            or user.user_id in included_users
         }
 
         results: list[ClientMessage] = await asyncio.gather(*tasks.values())
@@ -325,11 +357,22 @@ class Room:
 
         return dict(zip(tasks.keys(), results))
 
-    def ask_everybody(self, message: Any, timeout: int | None = None) -> dict[int, Any]:
+    def ask_everybody(
+        self,
+        message: Any,
+        timeout: int | None = None,
+        excluded_users: list[int | User] = None,
+        included_users: list[int | User] = None,
+    ) -> dict[User, Any]:
         """
         Asks every player a question and returns a dict of {user_id: Message}.
         """
         self.__logger.debug(f'Asking everybody in room "{self.name}"', message)
+
+        if excluded_users is None:
+            excluded_users = []
+        if included_users is None:
+            included_users = []
 
         if not self.users:
             return {}
@@ -339,7 +382,13 @@ class Room:
         message_object: ServerMessage = ServerMessage(message)
 
         future = asyncio.run_coroutine_threadsafe(
-            self._ask_everybody_async(message_object), loop
+            self._ask_everybody_async(
+                message_object,
+                process=False,
+                excluded_users=excluded_users,
+                included_users=included_users,
+            ),
+            loop,
         )
 
         try:

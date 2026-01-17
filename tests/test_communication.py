@@ -312,6 +312,87 @@ def test_room_broadcast_include_self(client_a: Client, client_b: Client):
     assert kwargs["message"] == "TestMessage", "Message is not correct"
 
 
+def test_server_room_broadcast(server, client_a: Client, client_b: Client):
+    client_a.on_message = MagicMock()
+    client_b.on_message = MagicMock()
+
+    server.rooms["TestRoom"].broadcast("TestMessage")
+
+    assert wait_for_mock(
+        client_a.on_message
+    ), "Callback was never called within timeout"
+    _, kwargs = client_a.on_message.call_args
+    assert kwargs["message"] == "TestMessage", "Message is not correct"
+
+    assert wait_for_mock(
+        client_b.on_message
+    ), "Callback was never called within timeout"
+    _, kwargs = client_b.on_message.call_args
+    assert kwargs["message"] == "TestMessage", "Message is not correct"
+
+
+def test_server_room_broadcast_excluded(
+    server, client_a: Client, client_b: Client, client_c: Client
+):
+    client_a.on_message = MagicMock()
+    client_b.on_message = MagicMock()
+    client_c.on_message = MagicMock()
+
+    server.rooms["TestRoom"].broadcast(
+        "TestMessage",
+        excluded_users=[
+            client_a.user_id,  # With user id
+            server.users[client_b.user_id],  # User object
+        ],
+    )
+
+    assert_mock_not_called(client_a.on_message)
+    assert_mock_not_called(client_b.on_message)
+
+    assert wait_for_mock(
+        client_c.on_message
+    ), "Callback was never called within timeout"
+    _, kwargs = client_c.on_message.call_args
+    assert kwargs["message"] == "TestMessage", "Message is not correct"
+
+
+def test_server_room_broadcast_included(
+    server,
+    client_a: Client,
+    temp_client_a: Client,
+    temp_client_b: Client,
+):
+    client_a.on_message = MagicMock()
+    temp_client_a.on_message = MagicMock()
+    temp_client_b.on_message = MagicMock()
+
+    server.rooms["TestRoom"].broadcast(
+        "TestMessage",
+        included_users=[
+            temp_client_a.user_id,  # With user id
+            server.users[temp_client_b.user_id],  # User object
+        ],
+    )
+
+    assert wait_for_mock(
+        client_a.on_message
+    ), "Callback was never called within timeout"
+    _, kwargs = client_a.on_message.call_args
+    assert kwargs["message"] == "TestMessage", "Message is not correct"
+
+    assert wait_for_mock(
+        temp_client_a.on_message
+    ), "Callback was never called within timeout"
+    _, kwargs = temp_client_a.on_message.call_args
+    assert kwargs["message"] == "TestMessage", "Message is not correct"
+
+    assert wait_for_mock(
+        temp_client_b.on_message
+    ), "Callback was never called within timeout"
+    _, kwargs = temp_client_b.on_message.call_args
+    assert kwargs["message"] == "TestMessage", "Message is not correct"
+
+
 def test_send_room_message(client_a: Client, client_b: Client):
     client_b.on_message = MagicMock()
 
@@ -462,6 +543,129 @@ def test_room_ask_everybody_include_self(
     expected_answer = {
         client.user_id: "TestAnswer"
         for client in [client_a, client_b, client_c, client_d]
+    }
+    assert answer_with_ids == expected_answer, "Answer is not correct"
+
+
+def test_server_room_ask_everybody(
+    server, client_a: Client, client_b: Client, client_c: Client, client_d: Client
+):
+    client_a.on_question = MagicMock(return_value="TestAnswer")
+    client_b.on_question = MagicMock(return_value="TestAnswer")
+    client_c.on_question = MagicMock(return_value="TestAnswer")
+    client_d.on_question = MagicMock(return_value="TestAnswer")
+
+    answer = server.rooms["TestRoom"].ask_everybody("TestQuestion")
+
+    assert wait_for_mock(
+        client_a.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = client_a.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    assert wait_for_mock(
+        client_b.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = client_b.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    answer_with_ids = {user.user_id: response for user, response in answer.items()}
+    expected_answer = {
+        client.user_id: "TestAnswer"
+        for client in [client_a, client_b, client_c, client_d]
+    }
+    assert answer_with_ids == expected_answer, "Answer is not correct"
+
+
+def test_server_room_ask_everybody_excluded(
+    server, client_a: Client, client_b: Client, client_c: Client, client_d: Client
+):
+    client_a.on_question = MagicMock(return_value="TestAnswer")
+    client_b.on_question = MagicMock(return_value="TestAnswer")
+    client_c.on_question = MagicMock(return_value="TestAnswer")
+    client_d.on_question = MagicMock(return_value="TestAnswer")
+
+    answer = server.rooms["TestRoom"].ask_everybody(
+        "TestQuestion",
+        excluded_users=[
+            client_a.user_id,  # User id (int)
+            server.users[client_b.user_id],  # User object
+        ],
+    )
+
+    assert wait_for_mock(
+        client_c.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = client_c.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    assert wait_for_mock(
+        client_d.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = client_d.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    assert_mock_not_called(client_a.on_question)
+    assert_mock_not_called(client_b.on_question)
+
+    answer_with_ids = {user.user_id: response for user, response in answer.items()}
+    expected_answer = {client.user_id: "TestAnswer" for client in [client_c, client_d]}
+    assert answer_with_ids == expected_answer, "Answer is not correct"
+
+
+def test_server_room_ask_everybody_included(
+    server,
+    client_a: Client,
+    client_b: Client,
+    client_c: Client,
+    client_d: Client,
+    temp_client_a: Client,
+    temp_client_b: Client,
+):
+    client_a.on_question = MagicMock(return_value="TestAnswer")
+    client_b.on_question = MagicMock(return_value="TestAnswer")
+    client_c.on_question = MagicMock(return_value="TestAnswer")
+    client_d.on_question = MagicMock(return_value="TestAnswer")
+    temp_client_a.on_question = MagicMock(return_value="TestAnswer")
+    temp_client_b.on_question = MagicMock(return_value="TestAnswer")
+
+    answer = server.rooms["TestRoom"].ask_everybody(
+        "TestQuestion",
+        included_users=[
+            temp_client_a.user_id,  # User id (int)
+            server.users[temp_client_b.user_id],  # User object
+        ],
+    )
+
+    assert wait_for_mock(
+        client_a.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = client_a.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    assert wait_for_mock(
+        temp_client_a.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = temp_client_a.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    assert wait_for_mock(
+        temp_client_b.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = temp_client_b.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    answer_with_ids = {user.user_id: response for user, response in answer.items()}
+    expected_answer = {
+        client.user_id: "TestAnswer"
+        for client in [
+            client_a,
+            client_b,
+            client_c,
+            client_d,
+            temp_client_a,
+            temp_client_b,
+        ]
     }
     assert answer_with_ids == expected_answer, "Answer is not correct"
 
