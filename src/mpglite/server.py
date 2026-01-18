@@ -168,9 +168,25 @@ class Room:
                 "lobby": self.lobby,
             }
         )
+        
+    def _user_or_id(self, user: User | int) -> User:
+        if isinstance(user, int):
+            return self.users[user]
+        return user
 
-    def user_in_room(self, user: User) -> bool:
-        return user.current_room == self
+    def user_in_room(self, user: User | int) -> bool:
+        if not (
+            user in self.users.values()
+            if isinstance(user, User)
+            else user in self.users
+        ):
+            return False
+
+        return (
+            user.current_room
+            if isinstance(user, User)
+            else self.users[user].current_room
+        ) == self
 
     async def _broadcast(
         self,
@@ -409,8 +425,9 @@ class Room:
         If the player is not in the room, or if it times out, returns None.
         """
         if not self.user_in_room(player):
+            user = self._user_or_id(player)
             raise UserLeftError(
-                f"User #{self.user_id} ({self.username}) has already left the game."
+                f"User #{user.user_id} ({user.username}) has already left the game."
             )
 
         return self.__server.ask_player(player, message, timeout=timeout)
@@ -565,7 +582,7 @@ class Server:
 
             if self.exception_when_user_leaves:
                 raise UserLeftError(
-                    f"User #{self.user_id} ({self.username}) left the game."
+                    f"User #{user.user_id} ({user.username}) left the game."
                 )
         finally:
             if user.current_room:
@@ -634,7 +651,7 @@ class Server:
 
                 if self.exception_when_user_leaves:
                     raise UserLeftError(
-                        f"User #{self.user_id} ({self.username}) left the game."
+                        f"User #{user.user_id} ({user.username}) left the game."
                     )
 
             case "start_room":
@@ -901,17 +918,3 @@ class Server:
         else:
             # If running in the same thread (like in a test)
             self.__stop_event.set()
-
-    @staticmethod
-    def response_ok(response: Any):
-        if not isinstance(response, Message):
-            return True
-
-        return response.ok
-
-    @staticmethod
-    def response_alive(response: Any):
-        if not isinstance(response, Message):
-            return True
-
-        return response.alive

@@ -547,7 +547,7 @@ def test_room_ask_everybody_include_self(
     assert answer_with_ids == expected_answer, "Answer is not correct"
 
 
-def test_room_ask_everybody_timeout(
+def test_client_room_ask_everybody_timeout(
     client_a: Client,
     client_b: Client,
     client_c: Client,
