@@ -2,7 +2,7 @@ from mpglite.client import Client
 from mpglite.message import ErrorMessage
 from mpglite.server import Server
 from testingutils import *
-from tests.conftest import PORT
+from conftest import PORT
 import mpglite
 
 from unittest.mock import MagicMock
