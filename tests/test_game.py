@@ -55,7 +55,16 @@ def test_room_start_not_enough_players(temp_client_a: Client):
     assert temp_client_a.room.status == "open"
 
 
-def test_room_end(temp_client_a: Client):
+def test_client_room_end(server: Server, temp_client_a: Client):
+    temp_client_a.create_room("TempRoom")
+    temp_client_a.room.start()
+    result = server.rooms["TempRoom"].end()
+    assert isinstance(result, mpglite.message.RoomEndedMessage)
+    assert server.rooms["TempRoom"].status == "ended"
+    assert temp_client_a.room.status == "ended"
+
+
+def test_server_room_end(temp_client_a: Client):
     temp_client_a.create_room("TempRoom", min_players=1)
     temp_client_a.room.start()
     result = temp_client_a.room.end()
@@ -271,3 +280,18 @@ def test_user_disconnected_few_players(server: Server):
 
 #     assert exception_raised is not None
 #     assert "TempRoom" not in server.rooms
+
+
+def test_client_abrupt_disconnect(server: Server):
+    server.on_room_left = MagicMock(return_value=False)
+
+    temp_client = Client("localhost", PORT)
+    temp_client.connect()
+    temp_client.create_room("TempRoom")
+    
+    temp_client._Client__ws.socket.close()
+
+    time.sleep(0.2)
+
+    assert temp_client.user_id not in server.users
+    assert "TempRoom" not in server.rooms
