@@ -98,6 +98,18 @@ def test_on_room_left(temp_client_a: Client):
     assert kwargs["client"] == temp_client_a
 
 
+def test_on_room_left_abruptly(server: Server):
+    server.on_room_left = MagicMock(return_value=False)
+    
+    temp_client = Client("localhost", PORT)
+    temp_client.connect()
+    temp_client.create_room("TempRoom")
+    
+    temp_client._Client__ws.socket.close()
+    
+    assert wait_for_mock(server.on_room_left)
+
+
 def test_on_room_started(temp_client_a: Client):
     temp_client_a.on_room_started = MagicMock()
 
@@ -283,15 +295,25 @@ def test_user_disconnected_few_players(server: Server):
 
 
 def test_client_abrupt_disconnect(server: Server):
-    server.on_room_left = MagicMock(return_value=False)
-
+    waiting_for_callback = True
+    
+    def room_left():
+        nonlocal waiting_for_callback
+        waiting_for_callback = False
+    
+    server.on_room_left = room_left
+    
     temp_client = Client("localhost", PORT)
     temp_client.connect()
     temp_client.create_room("TempRoom")
     
     temp_client._Client__ws.socket.close()
+    
+    started_waiting = time.time()
+    while waiting_for_callback:
+        assert time.time() - started_waiting < 1
+        time.sleep(0.05)
 
-    time.sleep(0.2)
-
+    time.sleep(0.1)
     assert temp_client.user_id not in server.users
     assert "TempRoom" not in server.rooms
