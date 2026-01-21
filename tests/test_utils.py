@@ -9,6 +9,8 @@ def test_format_list_with_and():
     assert format_list_with_and([1, 2]) == "1 and 2"
     assert format_list_with_and([1, 2, 3]) == "1, 2 and 3"
     assert format_list_with_and([1, 2, 3, 4]) == "1, 2, 3 and 4"
+    assert format_list_with_and([1, 2, 3], surround='"') == '"1", "2" and "3"'
+    assert format_list_with_and([1, 2, 3], start="(", end=")") == "(1), (2) and (3)"
 
 
 def test_smart_kwargs():
