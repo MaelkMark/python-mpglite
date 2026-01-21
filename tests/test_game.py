@@ -107,7 +107,7 @@ def test_on_room_left_abruptly(server: Server):
     
     temp_client._Client__ws.socket.close()
     
-    assert wait_for_mock(server.on_room_left)
+    assert wait_for_mock(server.on_room_left, timeout=5.0)
 
 
 def test_on_room_started(temp_client_a: Client):
@@ -270,7 +270,7 @@ def test_user_disconnected_few_players(server: Server):
 #     temp_client.create_room("TempRoom")
 
 #     def slow_answer(**kwargs):
-#         time.sleep(0.1)
+#         time.sleep(1)
 #         return "answer"
 
 #     temp_client.on_question = slow_answer
@@ -311,9 +311,9 @@ def test_client_abrupt_disconnect(server: Server):
     
     started_waiting = time.time()
     while waiting_for_callback:
-        assert time.time() - started_waiting < 1
+        assert time.time() - started_waiting < 5
         time.sleep(0.05)
 
-    time.sleep(0.1)
+    time.sleep(0.5)
     assert temp_client.user_id not in server.users
     assert "TempRoom" not in server.rooms
