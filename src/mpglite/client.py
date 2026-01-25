@@ -109,8 +109,6 @@ class Client:
 
     @property
     def rooms_changed(self):
-        print("Rooms", [repr(room) for room in self._rooms_filtered])
-        print("Rooms last", self._rooms_last)
         return [repr(room) for room in self._rooms_filtered] != self._rooms_last
 
     def _run_in_thread(self, func, **kwargs):
