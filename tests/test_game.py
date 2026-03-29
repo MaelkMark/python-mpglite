@@ -1,4 +1,5 @@
 from mpglite.client import Client
+from mpglite.exceptions import UserLeftError
 from mpglite.message import ErrorMessage
 from mpglite.server import Server
 from testingutils import *
@@ -261,37 +262,44 @@ def test_user_disconnected_few_players(server: Server):
     assert "TempRoom" not in server.rooms
 
 
-# Not working
-# def test_ask_user_disconnect(server: Server, temp_client_a: Client):
-#     temp_client_a.on_question = MagicMock(return_value=None)
+def test_ask_user_disconnect(server: Server, temp_client_a: Client):
+    """Test that UserLeftError is raised when asking a user who disconnects before answering."""
+    temp_client_a.create_room("TempRoom")
 
-#     temp_client = Client("localhost", PORT)
-#     temp_client.connect()
-#     temp_client.create_room("TempRoom")
+    temp_client = Client("localhost", PORT)
+    temp_client.connect()
+    temp_client.join_room("TempRoom")
 
-#     def slow_answer(**kwargs):
-#         time.sleep(1)
-#         return "answer"
+    # Set up a slow answer handler so the question stays pending
+    def slow_answer(**kwargs):
+        time.sleep(5)  # Long delay - disconnect will happen before this returns
+        return "answer"
 
-#     temp_client.on_question = slow_answer
+    temp_client.on_question = slow_answer
 
-#     exception_raised = None
+    exception_raised = None
 
-#     def ask_and_catch():
-#         nonlocal exception_raised
-#         try:
-#             server.users[temp_client.user_id].ask("TestQuestion")
-#         except mpglite.exceptions.UserLeftError as e:
-#             exception_raised = e
+    def ask_and_catch():
+        nonlocal exception_raised
+        try:
+            server.users[temp_client.user_id].ask("TestQuestion")
+        except Exception as e:
+            exception_raised = e
 
-#     thread = threading.Thread(target=ask_and_catch)
-#     thread.start()
-#     time.sleep(0.03)  # wait a bit so ask sends the question and starts waiting
-#     temp_client.disconnect()
-#     thread.join()
+    # Start asking in a background thread
+    thread = threading.Thread(target=ask_and_catch)
+    thread.start()
 
-#     assert exception_raised is not None
-#     assert "TempRoom" not in server.rooms
+    # Wait for the question to be sent and pending on the server
+    time.sleep(0.3)
+
+    # Abruptly close the socket - this prevents the client from sending an answer
+    temp_client._Client__ws.socket.close()
+
+    # Wait for the ask thread to complete
+    thread.join(timeout=5.0)
+
+    assert isinstance(exception_raised, UserLeftError), "No UserLeftError was raised"
 
 
 def test_client_abrupt_disconnect(server: Server):

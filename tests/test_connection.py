@@ -1,8 +1,11 @@
 from mpglite.client import Client
+from mpglite.server import Server
 from mpglite.exceptions import *
 from conftest import PORT, LOGLEVEL
+from testingutils import wait_for_mock
 
 import pytest
+from unittest.mock import MagicMock
 
 
 def test_connection_successful(temp_client_a: Client):
@@ -20,6 +23,15 @@ def test_user_id(temp_client_a):
 def test_default_username(client_a: Client):
     """Verify the 'Player [user_id]' naming logic."""
     assert client_a.username == f"Player {client_a.user_id}"
+
+
+def test_on_user_joined(server: Server):
+    server.on_user_joined = MagicMock()
+    
+    temp_client: Client = Client("localhost", PORT)
+    temp_client.connect()
+    
+    assert wait_for_mock(server.on_user_joined)
 
 
 def test_server_not_found():

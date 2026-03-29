@@ -81,12 +81,23 @@ class User:
 
         question: Question = Question(message, callback, process=process, sender_id=0)
         self._pending_questions.append(question)
-        # print(f"Sending question #{question.question_id} to user #{self.user_id}")
+        self.__logger.debug(f"Sending question #{question.question_id} to user #{self.user_id}")
         await self._send(question)
         return await future
 
     def ask(self, message: Any, timeout: int | None = None) -> Any:
         loop = self._socket.loop
+
+        try:
+            # Check if we're being called from the event loop thread
+            running_loop = asyncio.get_running_loop()
+            if running_loop is loop:
+                raise SyncNotAllowedError(
+                    "User.ask() cannot be called from within the event loop thread."
+                )
+        except RuntimeError:
+            # No running loop - we're in a different thread, safe to proceed
+            pass
 
         message_object: ServerMessage = ServerMessage(message)
 
@@ -497,6 +508,7 @@ class Server:
         loglevel: Loglevel = Loglevel.OFF,
         print_logo: bool = True,
         exception_when_user_leaves: bool = False,
+        on_user_joined: Callable = None,
         on_room_start: Callable = None,
         on_room_left: Callable = None,
         on_message: Callable = None,
@@ -516,6 +528,9 @@ class Server:
 
         # * Event handler callbacks
         # smart_kwargs tests if the user passed proper properties to the callback functions.
+        self.on_user_joined: Callable | None = on_user_joined
+        smart_kwargs(self.on_user_joined, user=None, server=None)
+        
         self.on_room_start: Callable | None = on_room_start
         smart_kwargs(self.on_room_start, room=None, server=None)
 
@@ -557,6 +572,17 @@ class Server:
         user.current_room = room
         await self._rooms_updated()
         await self._users_updated()
+        
+        # smart_call(self.on_user_joined, user=user, server=self)
+        threading.Thread(
+            target=smart_call,
+            args=(self.on_user_joined,),
+            kwargs={
+                "user": user,
+                "server": self
+            },
+            daemon=True
+        ).start()
 
         try:
             async for message_json in websocket:
@@ -608,9 +634,20 @@ class Server:
                 await user._send(self._get_room_list_message())
 
             case "client_message":
-                smart_call(
-                    self.on_message, message=message.message, user=user, server=self
-                )
+                # smart_call(
+                #     self.on_message, message=message.message, user=user, server=self
+                # )
+                
+                threading.Thread(
+                    target=smart_call,
+                    args=(self.on_message,),
+                    kwargs={
+                        "message": message.message,
+                        "user": user,
+                        "server": self
+                    },
+                    daemon=True
+                ).start()
 
     async def _handle_question(self, question: Question, message: Message, user: User):
         self.__logger.debug(f"Handling question #{question.question_id}: {message}")

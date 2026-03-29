@@ -38,3 +38,9 @@ class UserLeftError(MPGLiteError):
     """MPGLite Error ✦ Raised when the server wants to interact with a user that left the room."""
 
     pass
+
+
+class SyncNotAllowedError(MPGLiteError):
+    """MPGLite Error ✦ Raised when a synchronous method is called from the event loop thread."""
+
+    pass
