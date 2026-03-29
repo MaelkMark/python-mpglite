@@ -81,7 +81,9 @@ class User:
 
         question: Question = Question(message, callback, process=process, sender_id=0)
         self._pending_questions.append(question)
-        self.__logger.debug(f"Sending question #{question.question_id} to user #{self.user_id}")
+        self.__logger.debug(
+            f"Sending question #{question.question_id} to user #{self.user_id}"
+        )
         await self._send(question)
         return await future
 
@@ -179,7 +181,7 @@ class Room:
                 "lobby": self.lobby,
             }
         )
-        
+
     def _user_or_id(self, user: User | int) -> User:
         if isinstance(user, int):
             return self.users[user]
@@ -530,7 +532,7 @@ class Server:
         # smart_kwargs tests if the user passed proper properties to the callback functions.
         self.on_user_joined: Callable | None = on_user_joined
         smart_kwargs(self.on_user_joined, user=None, server=None)
-        
+
         self.on_room_start: Callable | None = on_room_start
         smart_kwargs(self.on_room_start, room=None, server=None)
 
@@ -550,7 +552,9 @@ class Server:
 
     async def _main(self):
         self.loop = asyncio.get_running_loop()
-        async with websockets.serve(self._handler, self.host, self.port) as ws_server:
+        async with websockets.serve(
+            self._handler, self.host, self.port, ping_interval=2, ping_timeout=4
+        ) as ws_server:
             self.__logger.info(f"Server started on ws://{self.host}:{self.port}")
             self.__ws_server = ws_server
             await self.__stop_event.wait()
@@ -572,16 +576,13 @@ class Server:
         user.current_room = room
         await self._rooms_updated()
         await self._users_updated()
-        
+
         # smart_call(self.on_user_joined, user=user, server=self)
         threading.Thread(
             target=smart_call,
             args=(self.on_user_joined,),
-            kwargs={
-                "user": user,
-                "server": self
-            },
-            daemon=True
+            kwargs={"user": user, "server": self},
+            daemon=True,
         ).start()
 
         try:
@@ -637,16 +638,12 @@ class Server:
                 # smart_call(
                 #     self.on_message, message=message.message, user=user, server=self
                 # )
-                
+
                 threading.Thread(
                     target=smart_call,
                     args=(self.on_message,),
-                    kwargs={
-                        "message": message.message,
-                        "user": user,
-                        "server": self
-                    },
-                    daemon=True
+                    kwargs={"message": message.message, "user": user, "server": self},
+                    daemon=True,
                 ).start()
 
     async def _handle_question(self, question: Question, message: Message, user: User):

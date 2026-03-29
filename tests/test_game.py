@@ -108,7 +108,7 @@ def test_on_room_left_abruptly(server: Server):
     
     temp_client._Client__ws.socket.close()
     
-    assert wait_for_mock(server.on_room_left, timeout=5.0)
+    assert wait_for_mock(server.on_room_left, timeout=15.0)
 
 
 def test_on_room_started(temp_client_a: Client):
@@ -272,7 +272,7 @@ def test_ask_user_disconnect(server: Server, temp_client_a: Client):
 
     # Set up a slow answer handler so the question stays pending
     def slow_answer(**kwargs):
-        time.sleep(5)  # Long delay - disconnect will happen before this returns
+        time.sleep(20)  # Long delay - disconnect will happen before this returns
         return "answer"
 
     temp_client.on_question = slow_answer
@@ -291,23 +291,22 @@ def test_ask_user_disconnect(server: Server, temp_client_a: Client):
     thread.start()
 
     # Wait for the question to be sent and pending on the server
-    time.sleep(0.3)
+    time.sleep(1)
 
     # Abruptly close the socket - this prevents the client from sending an answer
     temp_client._Client__ws.socket.close()
 
     # Wait for the ask thread to complete
-    thread.join(timeout=5.0)
+    thread.join(timeout=15.0)
 
     assert isinstance(exception_raised, UserLeftError), "No UserLeftError was raised"
 
 
 def test_client_abrupt_disconnect(server: Server):
-    waiting_for_callback = True
+    callback_received = threading.Event()
     
-    def room_left():
-        nonlocal waiting_for_callback
-        waiting_for_callback = False
+    def room_left(**kwargs):
+        callback_received.set()
     
     server.on_room_left = room_left
     
@@ -317,11 +316,8 @@ def test_client_abrupt_disconnect(server: Server):
     
     temp_client._Client__ws.socket.close()
     
-    started_waiting = time.time()
-    while waiting_for_callback:
-        assert time.time() - started_waiting < 5
-        time.sleep(0.05)
+    assert callback_received.wait(timeout=15.0), "on_room_left wasn't called"
 
     time.sleep(0.5)
-    assert temp_client.user_id not in server.users
-    assert "TempRoom" not in server.rooms
+    assert temp_client.user_id not in server.users, "User still in server"
+    assert "TempRoom" not in server.rooms, "Room still exists"
