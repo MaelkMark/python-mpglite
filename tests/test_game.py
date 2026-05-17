@@ -56,6 +56,14 @@ def test_room_start_not_enough_players(temp_client_a: Client):
     assert temp_client_a.room.status == "open"
 
 
+def test_room_start_server_not_enough_players(temp_client_a: Client):
+    temp_client_a.create_room("TempRoom", min_players=2)
+    result = temp_client_a._ask(mpglite.message.StartRoomMessage(temp_client_a.room.name), process=True)
+    assert isinstance(result, mpglite.message.ErrorMessage)
+    assert result.error_code == "ERR_NOT_ENOUGH_PLAYERS"
+    assert temp_client_a.room.status == "open"
+
+
 def test_client_room_end(server: Server, temp_client_a: Client):
     temp_client_a.create_room("TempRoom")
     temp_client_a.room.start()
@@ -175,6 +183,12 @@ def test_client_rematch_not_in_room(temp_client_a: Client):
     assert response.error_code == "ERR_NOT_IN_ROOM"
 
 
+def test_server_rematch_not_in_room(temp_client_a: Client):
+    response = temp_client_a._ask(mpglite.message.RematchMessage(), process=True)
+    assert isinstance(response, ErrorMessage)
+    assert response.error_code == "ERR_REMATCH_NO_ROOM"
+
+
 def test_room_rematch(temp_client_a: Client, temp_client_b: Client):
     temp_client_a.create_room("TempRoom")
     temp_client_b.join_room("TempRoom")
@@ -186,6 +200,17 @@ def test_room_rematch(temp_client_a: Client, temp_client_b: Client):
 
     temp_client_b.room.rematch()
     assert temp_client_b.room.status == "started"
+
+
+def test_rematch_leave(server: Server, temp_client_a: Client, temp_client_b: Client):
+    temp_client_a.create_room("TempRoom")
+    temp_client_b.join_room("TempRoom")
+    temp_client_a.room.end()
+    temp_client_a.room.rematch()
+    assert temp_client_a.user_id in server.rooms["TempRoom"].wants_rematch, "User not in rematch list"
+    
+    temp_client_a.leave_room()
+    assert temp_client_a.user_id not in server.rooms["TempRoom"].wants_rematch, "User still in rematch list"
 
 
 def test_user_disconnected(server: Server, temp_client_a: Client, temp_client_b: Client):

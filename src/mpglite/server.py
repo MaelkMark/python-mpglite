@@ -678,7 +678,7 @@ class Server:
 
             case "rematch":
                 room = user.current_room
-                if room is None:
+                if room is None or room.lobby:
                     await answer(
                         ErrorMessage(
                             "ERR_REMATCH_NO_ROOM",

@@ -1,9 +1,12 @@
-from unittest.mock import MagicMock
 from mpglite.client import Client, Room, User
+from mpglite.exceptions import UserLeftError
 from mpglite.server import Server
-from mpglite.message import ErrorMessage
+from mpglite.message import ErrorMessage, Message
 from testingutils import *
 from conftest import PORT
+
+from unittest.mock import MagicMock
+import pytest
 
 
 def test_on_room_list(temp_client_a: Client, temp_client_b: Client):
@@ -201,6 +204,60 @@ def test_server_ask_player_user(temp_client_a: Client, server: Server):
     assert answer == "TestAnswer", "Answer is not correct"
 
 
+def test_server_room_ask_player(temp_client_a: Client, server: Server):
+    temp_client_a.on_question = MagicMock(return_value="TestAnswer")
+
+    answer = server.rooms["lobby"].ask_player(server.users[temp_client_a.user_id], "TestQuestion")
+
+    assert wait_for_mock(
+        temp_client_a.on_question
+    ), "Callback was never called within timeout"
+    _, kwargs = temp_client_a.on_question.call_args
+    assert kwargs["question"] == "TestQuestion", "Question is not correct"
+
+    assert answer == "TestAnswer", "Answer is not correct"
+
+
+def test_ask_user_not_alive(server: Server, temp_client_a: Client):
+    """Test that UserLeftError is raised when asking a user who is not alive."""
+    temp_client_a.create_room("TempRoom")
+
+    user = server.users[temp_client_a.user_id]
+    user.alive = False
+
+    with pytest.raises(UserLeftError):
+        server.ask_player(temp_client_a.user_id, "TestQuestion")
+
+
+def test_server_ask_question_timeout(temp_client_a: Client, server: Server):
+    """Test that server.ask_player returns None when client doesn't answer in time"""
+    # Don't set on_question callback to simulate no response
+    temp_client_a.on_question = None
+    answer = server.ask_player(temp_client_a.user_id, "TestQuestion", timeout=0.1)
+    assert answer is None
+
+
+def test_join_full_room(temp_client_a: Client, temp_client_b: Client):
+    temp_client_a.create_room("TestRoom", max_players=1, auto_start=False)
+    response: Message = temp_client_b.join_room("TestRoom")
+    assert response.type == "error"
+    assert response.error_code == "ERR_ROOM_FULL"
+
+
+def test_join_not_open_room(temp_client_a: Client, temp_client_b: Client):
+    temp_client_a.create_room("TestRoom", max_players=2, min_players=1)
+    temp_client_a.room.start()
+    
+    response: Message = temp_client_b.join_room("TestRoom")
+    assert response.type == "error", "Fails for started room, message type isn't error"
+    assert response.error_code == "ERR_ROOM_NOT_OPEN", "Fails for started room, incorrect error code"
+
+    temp_client_a.room.end()
+    response = temp_client_b.join_room("TestRoom")  # Call join_room again after ending the room
+    assert response.type == "error", "Fails for ended room, message type isn't error"
+    assert response.error_code == "ERR_ROOM_NOT_OPEN", "Fails for ended room, incorrect error code"
+
+
 def test_join_room(
     client_a: Client, client_b: Client, client_c: Client, client_d: Client
 ):
@@ -232,6 +289,13 @@ def test_room_broadcast(client_a: Client, client_b: Client, client_c: Client):
     assert kwargs["message"] == "TestMessage", "Message is not correct"
 
     assert_mock_not_called(client_a.on_message)
+
+
+def test_room_broadcast_to_lobby(temp_client_a: Client):
+    result: Message = temp_client_a.room.broadcast("TestMessage")
+    assert result.type == "error"
+    assert result.error_code == "ERR_ROOM_LOBBY"
+
 
 
 def test_room_broadcast_excluded(
@@ -269,7 +333,7 @@ def test_room_broadcast_included(
     assert client_a.room.broadcast(
         "TestMessage",
         included_users=[
-            temp_client_a.user_id,  # User ID (int),
+            temp_client_a.user_id,  # User ID (int)
             client_a.get_user_by_id(temp_client_b.user_id),  # User object
         ],
     ).ok
