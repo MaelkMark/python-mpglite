@@ -11,7 +11,7 @@ import traceback
 from websockets.sync.client import connect as ws_connect
 from websockets.exceptions import ConnectionClosed, InvalidURI
 
-from typing import Any
+from typing import Any, Union
 from collections.abc import Callable
 from websockets.sync.client import ClientConnection
 
@@ -111,13 +111,13 @@ class Client:
     def rooms_changed(self):
         return [repr(room) for room in self._rooms_filtered] != self._rooms_last
 
-    def _run_in_thread(self, func, **kwargs):
+    def _run_in_thread(self, func: Callable, **kwargs) -> None:
         if func:
             threading.Thread(
                 target=smart_call, args=(func,), kwargs=kwargs, daemon=True
             ).start()
 
-    def _listen(self):
+    def _listen(self) -> None:
         while self._running:
             try:
                 message_json = self.__ws.recv()
@@ -162,7 +162,7 @@ class Client:
                 self._running = False
                 break
 
-    def _handle_message(self, message: Message):
+    def _handle_message(self, message: Message) -> None:
         match message.type:
             case "init":
                 self.user_id = message.user_id
@@ -174,7 +174,7 @@ class Client:
             case "room_list":
                 current_room_names = []
                 for room_data in message.rooms:
-                    room = self._load_room(room_data)
+                    room: Room = self._load_room(room_data)
 
                     room._update(room_data)
                     current_room_names.append(room.name)
@@ -189,7 +189,7 @@ class Client:
                 current_ids = []
                 for user_data in message.users:
                     if isinstance(user_data, str):
-                        user_data = json.loads(user_data)
+                        user_data: dict = json.loads(user_data)
 
                     user = self.get_user_by_id(user_data["user_id"])
                     if user is None:
@@ -257,7 +257,7 @@ class Client:
                     client=self,
                 )
 
-    def _handle_question(self, question: Message):
+    def _handle_question(self, question: Message) -> None:
         message = question.parsed_message
         answer_message = None
         match message.type:
@@ -346,13 +346,13 @@ class Client:
 
         return None
 
-    def get_user_by_username(self, username: str):
+    def get_user_by_username(self, username: str) -> Union["User", None]:
         for user in self._users:
             if user.username == username:
                 return user
         return None
 
-    def get_room_by_name(self, name: str):
+    def get_room_by_name(self, name: str) -> Union["User", None]:
         for room in self._rooms:
             if room.name == name:
                 return room
@@ -551,7 +551,7 @@ class Room:
     def __repr__(self):
         return f"Room({self.json})"
 
-    def _update(self, room_dict: str | dict):
+    def _update(self, room_dict: str | dict) -> None:
         if isinstance(room_dict, str):
             room_dict = json.loads(room_dict)
 
