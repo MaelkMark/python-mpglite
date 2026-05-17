@@ -64,16 +64,17 @@ def test_room_start_server_not_enough_players(temp_client_a: Client):
     assert temp_client_a.room.status == "open"
 
 
-def test_client_room_end(server: Server, temp_client_a: Client):
+def test_server_room_end(server: Server, temp_client_a: Client):
     temp_client_a.create_room("TempRoom")
     temp_client_a.room.start()
     result = server.rooms["TempRoom"].end()
+    time.sleep(0.1)
     assert isinstance(result, mpglite.message.RoomEndedMessage)
     assert server.rooms["TempRoom"].status == "ended"
     assert temp_client_a.room.status == "ended"
 
 
-def test_server_room_end(temp_client_a: Client):
+def test_client_room_end(temp_client_a: Client):
     temp_client_a.create_room("TempRoom", min_players=1)
     temp_client_a.room.start()
     result = temp_client_a.room.end()
