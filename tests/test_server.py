@@ -4,7 +4,7 @@ from mpglite.server import Server, Room, User
 from mpglite.logger import Loglevel
 from mpglite.client import Client
 from testingutils import *
-from tests.conftest import LOGLEVEL, PORT
+from conftest import LOGLEVEL, PORT
 
 
 def test_room_user_or_id(server: Server, temp_client_a: Client):
