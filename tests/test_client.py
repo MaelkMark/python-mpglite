@@ -75,6 +75,13 @@ def test_join_nonexistent_room(client_b: Client):
     assert response.error_code == "ERR_NO_SUCH_ROOM", "Error code is not correct"
 
 
+def test_start_nonexistent_room(temp_client_a: Client):
+    """Verify starting a nonexistent room fails."""
+    response = temp_client_a._ask(mpglite.message.StartRoomMessage("NonexistentRoom"))
+    assert isinstance(response, ErrorMessage), "Response is not an ErrorMessage object"
+    assert response.error_code == "ERR_NO_SUCH_ROOM", "Error code is not correct"
+
+
 def test_client_join_room(client_b: Client):
     """Test joining a room."""
     response = client_b.join_room("TestRoom")
@@ -92,6 +99,13 @@ def test_client_leave_room(client_b: Client):
     assert isinstance(response, Message), "Response is not a Message object"
     assert response.ok, "Response is not OK"
     assert client_b.room is None, "client.room is not None"
+
+
+def test_client_leave_lobby(temp_client_a: Client):
+    """Test leaving a room."""
+    response = temp_client_a.leave_room()
+    assert isinstance(response, ErrorMessage), "Response is not an ErrorMessage object"
+    assert response.error_code == "ERR_LOBBY_CANNOT_BE_LEFT", "Error code is not correct"
 
 
 def test_room_join(client_b: Client):

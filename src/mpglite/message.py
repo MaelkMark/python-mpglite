@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Union
 from .utils import *
 
 import json
@@ -50,7 +50,7 @@ class Message:
         return not self.ok
 
     @staticmethod
-    def parse(message: str | dict):
+    def parse(message: Union[str, dict, "Message"]):
         if isinstance(message, Message):
             return message
 

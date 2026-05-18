@@ -6,10 +6,12 @@ from testingutils import *
 from conftest import PORT
 import mpglite
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
+from websockets.exceptions import ConnectionClosed
 import pytest
 import time
 import threading
+import asyncio
 
 
 def test_room_auto_start(temp_client_a: Client, temp_client_b: Client):
@@ -347,3 +349,26 @@ def test_client_abrupt_disconnect(server: Server):
     time.sleep(0.5)
     assert temp_client.user_id not in server.users, "User still in server"
     assert "TempRoom" not in server.rooms, "Room still exists"
+
+
+def test_exception_when_user_leaves_flag():
+    """Test that UserLeftError is raised in the server handler when the flag is set, and not otherwise."""
+    # Scenario: exception_when_user_leaves=True
+    s_true = Server("localhost", 0, print_logo=False, exception_when_user_leaves=True)
+    m_ws = AsyncMock()
+    # ConnectionClosed triggers the code path in Server._handler that checks the flag
+    m_ws.__aiter__.side_effect = ConnectionClosed(None, None)
+    
+    exception_raised = False
+    try:
+        asyncio.run(s_true._handler(m_ws))
+    except UserLeftError:
+        exception_raised = True
+    assert exception_raised is True, "UserLeftError should be raised when exception_when_user_leaves is True"
+
+    # Scenario: exception_when_user_leaves=False
+    s_false = Server("localhost", 0, print_logo=False, exception_when_user_leaves=False)
+    try:
+        asyncio.run(s_false._handler(m_ws))
+    except UserLeftError:
+        assert False, "UserLeftError should NOT be raised when exception_when_user_leaves is False"
