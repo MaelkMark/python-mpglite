@@ -1,3 +1,5 @@
+from logging import Logger
+
 from .utils import *
 from .message import *
 from .exceptions import *
@@ -22,15 +24,16 @@ class Client:
         host: str,
         port: int,
         loglevel: int | None = None,
-        on_message: Callable = None,
-        on_room_joined: Callable = None,
-        on_room_started: Callable = None,
-        on_room_ended: Callable = None,
-        on_room_deleted: Callable = None,
-        on_room_left: Callable = None,
-        on_room_list: Callable = None,
-        on_user_list: Callable = None,
-        on_question: Callable = None,
+        *,
+        on_message: Callable[[Any, Union["User", None], "Client"], None] | None = None,
+        on_room_joined: Callable[["Room", "Client"], None] | None = None,
+        on_room_started: Callable[["Room", "Client"], None] | None = None,
+        on_room_ended: Callable[["Room", "Client"], None] | None = None,
+        on_room_deleted: Callable[[str, "Client"], None] | None = None,
+        on_room_left: Callable[[Union["User", None], Union["Room", None], "Client"], None] | None = None,
+        on_room_list: Callable[[list["Room"], "Client"], None] | None = None,
+        on_user_list: Callable[[list["User"], "Client"], None] | None = None,
+        on_question: Callable[[Any, Union["User", None], "Client"], Any] | None = None,
     ):
         # * WebSocket properties
         self.uri: str = f"ws://{host}:{port}"
@@ -42,7 +45,7 @@ class Client:
         self.username: str | None = None
         self.room: Room | None = None
 
-        self.__logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
+        self.__logger: Logger = get_logger(loglevel=loglevel if loglevel else Loglevel.OFF)
         self._users: list[User] = []
         self._users_last: list[str] | None = None
         self._rooms: list[Room] = []
@@ -50,65 +53,65 @@ class Client:
 
         # * Event handler callbacks
         # When the client receives a ServerMessage message from the server
-        self.on_message: Callable = on_message
+        self.on_message: Callable[[Any, Union["User", None], "Client"], None] | None = on_message
         smart_kwargs(self.on_message, message=None, sender=None, client=None)
 
         # When the client receives a ServerMessage question from the server
-        self.on_question: Callable = on_question
+        self.on_question: Callable[[Any, Union["User", None], "Client"], Any] | None = on_question
         smart_kwargs(self.on_question, question=None, sender=None, client=None)
 
         # When the client joins a room (room_joined)
-        self.on_room_joined: Callable = on_room_joined
+        self.on_room_joined: Callable[["Room", "Client"], None] | None = on_room_joined
         smart_kwargs(self.on_room_joined, room=None, client=None)
 
         # When the client's room starts (room_started)
-        self.on_room_started: Callable = on_room_started
+        self.on_room_started: Callable[["Room", "Client"], None] | None = on_room_started
         smart_kwargs(self.on_room_started, room=None, client=None)
 
         # When the client's room ends (room_ended)
-        self.on_room_ended: Callable = on_room_ended
+        self.on_room_ended: Callable[["Room", "Client"], None] | None = on_room_ended
         smart_kwargs(self.on_room_ended, room=None, client=None)
 
         # When the client's room gets deleted (room_deleted)
-        self.on_room_deleted: Callable = on_room_deleted
+        self.on_room_deleted: Callable[[str, "Client"], None] | None = on_room_deleted
         smart_kwargs(self.on_room_deleted, room_name=None, client=None)
 
         # When someone leaves the client's room (room_left)
-        self.on_room_left: Callable = on_room_left
+        self.on_room_left: Callable[[Union["User", None], Union["Room", None], "Client"], None] | None = on_room_left
         smart_kwargs(self.on_room_left, user=None, room=None, client=None)
 
         # When the server sends a RoomListMessage
-        self.on_room_list: Callable = on_room_list
+        self.on_room_list: Callable[[list["Room"], "Client"], None] | None = on_room_list
         smart_kwargs(self.on_room_list, rooms=None, client=None)
 
         # When the server sends a UserListMessage
-        self.on_user_list: Callable = on_user_list
+        self.on_user_list: Callable[[list["User"], "Client"], None] | None = on_user_list
         smart_kwargs(self.on_user_list, users=None, client=None)
 
     @property
-    def _users_filtered(self):
+    def _users_filtered(self) -> list["User"]:
         return [user for user in self._users if not user.temp]
     
     @property
-    def users(self):
+    def users(self) -> list["User"]:
         self._users_last = [repr(user) for user in self._users_filtered]
         return self._users_filtered
 
     @property
-    def users_changed(self):
+    def users_changed(self) -> bool:
         return [repr(user) for user in self._users_filtered] != self._users_last
 
     @property
-    def _rooms_filtered(self):
+    def _rooms_filtered(self) -> list["Room"]:
         return [room for room in self._rooms if not room.lobby]
 
     @property
-    def rooms(self):
+    def rooms(self) -> list["Room"]:
         self._rooms_last = [repr(room) for room in self._rooms_filtered]
         return self._rooms_filtered
 
     @property
-    def rooms_changed(self):
+    def rooms_changed(self) -> bool:
         return [repr(room) for room in self._rooms_filtered] != self._rooms_last
 
     def _run_in_thread(self, func: Callable, **kwargs) -> None:
@@ -284,7 +287,7 @@ class Client:
                 Answer(question.question_id, answer_message, process=question.process)
             )
 
-    def _load_room(self, room_data: str):
+    def _load_room(self, room_data: str) -> "Room":
         if isinstance(room_data, str):
             room_data = json.loads(room_data)
 
@@ -295,7 +298,7 @@ class Client:
 
         return room
 
-    def _send(self, message: Message):
+    def _send(self, message: Message) -> None:
         self.__ws.send(str(message))
 
     def _send_private_message(self, user_id: int, message: str) -> Message:
@@ -308,7 +311,7 @@ class Client:
             PrivateQuestion(from_id=self.user_id, to_id=user_id, message=message)
         )
 
-    def send(self, message: Any):
+    def send(self, message: Any) -> None:
         """Sends a message to the server."""
         self._send(ClientMessage(message))
 
@@ -331,7 +334,7 @@ class Client:
         )
         return future
 
-    def _ask(self, message: Message, process: bool = False) -> Message:
+    def _ask(self, message: Message, process: bool = False) -> Any:
         """Sends a Question and waits for an Answer. Returns the answer Message object."""
         return self._ask_async(message, process=process).result()
 
@@ -339,7 +342,7 @@ class Client:
         """Asks a question from the server and waits for an answer."""
         return self._ask(ClientMessage(message)).message
 
-    def get_user_by_id(self, user_id: int):
+    def get_user_by_id(self, user_id: int) -> Union["User", None]:
         for user in self._users:
             if user.user_id == user_id:
                 return user
@@ -352,7 +355,7 @@ class Client:
                 return user
         return None
 
-    def get_room_by_name(self, name: str) -> Union["User", None]:
+    def get_room_by_name(self, name: str) -> Union["Room", None]:
         for room in self._rooms:
             if room.name == name:
                 return room
@@ -410,7 +413,7 @@ class Client:
         max_players: int = math.inf,
         min_players: int = 2,
         auto_start: bool = True,
-    ):
+    ) -> Message:
         """Creates a new room and joins to it."""
         return self._ask(
             CreateRoomMessage(
@@ -467,7 +470,7 @@ class Client:
 
         return True
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """Disconnects from the server."""
         self._running = False
         if self.__ws:
@@ -476,21 +479,21 @@ class Client:
 
 class User:
     def __init__(
-        self, client: Client, logger, user_id: int, username: str, temp: bool = False
+        self, client: Client, logger: Logger, user_id: int, username: str, temp: bool = False
     ):
-        self.__client = client
-        self.__logger = logger
-        self.user_id = user_id
-        self.username = username
-        self.temp = temp
-        self.alive = True
+        self.__client: Client = client
+        self.__logger: Logger = logger
+        self.user_id: int = user_id
+        self.username: str = username
+        self.temp: bool = temp
+        self.alive: bool = True
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             f"User#{self.user_id}({self.username}{' (dead)' if not self.alive else ''})"
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         json_data = json.dumps(
             {
                 "user_id": self.user_id,
@@ -513,7 +516,7 @@ class Room:
     def __init__(
         self,
         client: Client,
-        logger,
+        logger: Logger,
         name: str,
         players: list[User] = [],
         max_players: int = math.inf,
@@ -521,15 +524,15 @@ class Room:
         auto_start: bool = True,
         lobby: bool = False,
     ):
-        self.__client = client
-        self.__logger = logger
-        self.name = name
+        self.__client: Client = client
+        self.__logger: Logger = logger
+        self.name: str = name
         self.players: dict[int, User] = players
-        self.max_players = max_players
-        self.min_players = min_players
-        self.auto_start = auto_start
-        self.status = "open"
-        self.lobby = lobby
+        self.max_players: int = max_players
+        self.min_players: int = min_players
+        self.auto_start: bool = auto_start
+        self.status: str = "open"
+        self.lobby: bool = lobby
 
     @property
     def json(self):
@@ -545,10 +548,10 @@ class Room:
             }
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Room({self.name}, {len(self.players)}/{self.max_players} players, {self.status})"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Room({self.json})"
 
     def _update(self, room_dict: str | dict) -> None:
@@ -682,7 +685,7 @@ class Room:
         return self.__client.rematch()
 
     @staticmethod
-    def parse(client: Client, room_dict: str | dict, logger):
+    def parse(client: Client, room_dict: str | dict, logger: Logger):
         if isinstance(room_dict, str):
             room_dict = json.loads(room_dict)
 

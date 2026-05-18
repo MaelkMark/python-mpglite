@@ -1,4 +1,5 @@
 from __future__ import annotations
+from logging import Logger
 
 from .utils import *
 from .message import *
@@ -21,9 +22,9 @@ from websockets.asyncio.server import ServerConnection
 class User:
     id_counter: int = 0
 
-    def __init__(self, logger, socket: ServerConnection, username: str | None = None):
-        self.__logger = logger
-        self._socket = socket
+    def __init__(self, logger: Logger, socket: ServerConnection, username: str | None = None):
+        self.__logger: Logger = logger
+        self._socket: ServerConnection = socket
 
         User.id_counter += 1
         self.user_id: int = User.id_counter
@@ -33,7 +34,7 @@ class User:
         self.alive: bool = True
         self._pending_questions: list[Question] = []
 
-    def __str__(self):
+    def __str__(self) -> str:
         return json.dumps({"user_id": self.user_id, "username": self.username})
 
     async def _send(self, message: Message) -> bool:
@@ -141,35 +142,35 @@ class User:
 class Room:
     def __init__(
         self,
-        server,
-        logger,
-        name,
-        max_players=math.inf,
-        min_players=2,
-        auto_start=True,
-        lobby=False,
+        server: Server,
+        logger: Logger,
+        name: str,
+        max_players: int = math.inf,
+        min_players: int = 2,
+        auto_start: bool = True,
+        lobby: bool = False,
     ):
-        self.__server = server
-        self.__logger = logger
+        self.__server: Server = server
+        self.__logger: Logger = logger
 
-        self.name = name
+        self.name: str = name
         self.users: dict[int, User] = {}
         self.wants_rematch: list[int] = []
-        self.max_players = max_players
-        self.min_players = min_players
-        self.auto_start = auto_start
-        self.status = "open"
-        self.lobby = lobby
+        self.max_players: int = max_players
+        self.min_players: int = min_players
+        self.auto_start: bool = auto_start
+        self.status: str = "open"
+        self.lobby: bool = lobby
 
     @property
-    def players(self):
+    def players(self) -> list[User]:
         return list(self.users.values())
 
     @property
-    def current_players(self):
+    def current_players(self) -> list[User]:
         return [user for user in self.players if self.user_in_room(user)]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return json.dumps(
             {
                 "name": self.name,
@@ -277,7 +278,7 @@ class Room:
 
         return OKMessage()
 
-    async def _remove_user(self, user: User):
+    async def _remove_user(self, user: User) -> None:
         self.__logger.debug(f'Removing user #{user.user_id} from room "{self.name}"')
 
         user_id = user.user_id
@@ -454,7 +455,7 @@ class Room:
 
 
 class Lobby(Room):
-    def __init__(self, server, logger):
+    def __init__(self, server: Server, logger: Logger):
         super().__init__(
             server=server,
             logger=logger,
@@ -473,12 +474,13 @@ class Server:
         port: int,
         loglevel: Loglevel = Loglevel.OFF,
         print_logo: bool = True,
+        *,
         exception_when_user_leaves: bool = False,
-        on_user_joined: Callable = None,
-        on_room_start: Callable = None,
-        on_room_left: Callable = None,
-        on_message: Callable = None,
-        on_question: Callable = None,
+        on_user_joined: Callable[[User, Server], None] | None = None,
+        on_room_start: Callable[[Room, Server], None] | None = None,
+        on_message: Callable[[Any, User, Server], None] | None = None,
+        on_question: Callable[[Any, User, Server], Any] | None = None,
+        on_room_left: Callable[[Room, User, Server], bool] | None = None,
     ):
         # * Server properties
         self.host: str = host
@@ -494,19 +496,19 @@ class Server:
 
         # * Event handler callbacks
         # smart_kwargs tests if the user passed proper properties to the callback functions.
-        self.on_user_joined: Callable | None = on_user_joined
+        self.on_user_joined: Callable[[User, Server], None] | None = on_user_joined
         smart_kwargs(self.on_user_joined, user=None, server=None)
 
-        self.on_room_start: Callable | None = on_room_start
+        self.on_room_start: Callable[[Room, Server], None] | None = on_room_start
         smart_kwargs(self.on_room_start, room=None, server=None)
 
-        self.on_message: Callable | None = on_message
+        self.on_message: Callable[[Any, User, Server], None] | None = on_message
         smart_kwargs(self.on_message, message=None, user=None, server=None)
 
-        self.on_question: Callable | None = on_question
+        self.on_question: Callable[[Any, User, Server], Any] | None = on_question
         smart_kwargs(self.on_question, question=None, user=None, server=None)
 
-        self.on_room_left: Callable | None = on_room_left
+        self.on_room_left: Callable[[Room, User, Server], bool] | None = on_room_left
         smart_kwargs(self.on_room_left, room=None, user=None, server=None)
 
         if print_logo:
