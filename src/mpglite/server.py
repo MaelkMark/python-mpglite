@@ -843,13 +843,13 @@ class Server:
                 "ERR_LOBBY_CANNOT_BE_DELETED", "Lobby cannot be deleted."
             )
 
-        asyncio.create_task(room._broadcast(RoomDeletedMessage(room.name)))
+        asyncio.run_coroutine_threadsafe(room._broadcast(RoomDeletedMessage(room.name)), self.loop)
 
         for user in room.users.values():
             user.current_room = None
 
         del self.rooms[room_name]
-        asyncio.create_task(self._rooms_updated())
+        asyncio.run_coroutine_threadsafe(self._rooms_updated(), self.loop)
 
         return RoomDeletedMessage(room.name)
 

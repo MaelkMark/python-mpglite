@@ -3,6 +3,7 @@ import threading
 from mpglite.server import Server, Room, User
 from mpglite.logger import Loglevel
 from mpglite.client import Client
+from mpglite.message import Message, ErrorMessage
 from testingutils import *
 from conftest import LOGLEVEL, PORT
 
@@ -37,3 +38,38 @@ def test_print_logo(capsys):
     Server(host="localhost", port=PORT, print_logo=False, loglevel=Loglevel.OFF)
     captured = capsys.readouterr()
     assert captured.out == "", "Logo was not expected to be printed to stdout."
+
+
+def test_server_room_delete_room(server: Server, temp_client_a: Client):
+    ROOM_NAME = "TestRoom"
+    temp_client_a.create_room(ROOM_NAME)
+    room: Room = server.rooms[ROOM_NAME]
+    response = room.delete()
+    assert isinstance(response, Message), "Response is not a Message object"
+    assert response.ok, "Response is not OK"
+    assert response.type == "room_deleted", "Response type is not correct"
+    assert ROOM_NAME not in server.rooms, "Room was not deleted"
+
+
+def test_server_delete_room(server: Server, temp_client_a: Client):
+    ROOM_NAME = "TestRoom"
+    temp_client_a.create_room(ROOM_NAME)
+    response = server._delete_room(ROOM_NAME)
+    assert isinstance(response, Message), "Response is not a Message object"
+    assert response.ok, "Response is not OK"
+    assert response.type == "room_deleted", "Response type is not correct"
+    assert ROOM_NAME not in server.rooms, "Room was not deleted"
+
+
+def test_server_delete_lobby(server: Server):
+    response = server._delete_room("lobby")
+    assert isinstance(response, Message), "Response is not a Message object"
+    assert isinstance(response, ErrorMessage), "Response is not an ErrorMessage"
+    assert response.error_code == "ERR_LOBBY_CANNOT_BE_DELETED", "Error code is not correct"
+
+
+def test_server_delete_nonexistent_room(server: Server):
+    response = server._delete_room("NonexistentRoom")
+    assert isinstance(response, Message), "Response is not a Message object"
+    assert isinstance(response, ErrorMessage), "Response is not an ErrorMessage"
+    assert response.error_code == "ERR_NO_SUCH_ROOM", "Error code is not correct"
